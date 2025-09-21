@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 typedef enum TokenType {
     TOKEN_WORD, 
     TOKEN_NEWLINE,
@@ -17,4 +19,17 @@ typedef enum TokenType {
     TOKEN_AND,
     TOKEN_OR,
     TOKEN_AMP
-} Token;
+} TokenType;
+
+typedef enum QuoteCount {
+    QUOTE_NONE,
+    QUOTE_SINGLE,
+    QUOTE_DOUBLE
+} QuoteCount;
+
+typedef struct Token {
+    TokenType token;
+    char *text;
+    QuoteCount quote;
+    size_t pos;
+};
