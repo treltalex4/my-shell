@@ -16,6 +16,6 @@ void lexer_reset(Lexer *lexer, const char *input);
 
 void lexer_destroy(Lexer *lexer);
 
-Token lexer_next_token(Lexer *lexer);
+Token lexer_tokenize(Lexer *lexer);
 
 void lexer_free_token(Token *token);
