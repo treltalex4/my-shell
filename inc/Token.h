@@ -1,3 +1,6 @@
+// Token.h
+#pragma once
+
 #include <stdlib.h>
 
 typedef enum TokenType {
@@ -15,10 +18,10 @@ typedef enum TokenType {
     TOKEN_REDIR_ERR, // &>
     TOKEN_REDIR_ERR_APPEND, // &>>
 
-    TOKEN_SEMI,
-    TOKEN_AND,
-    TOKEN_OR,
-    TOKEN_AMP
+    TOKEN_SEMI, // ;
+    TOKEN_AND, // &&
+    TOKEN_OR, // ||
+    TOKEN_AMP // &
 } TokenType;
 
 typedef enum QuoteCount {
@@ -28,8 +31,10 @@ typedef enum QuoteCount {
 } QuoteCount;
 
 typedef struct Token {
-    TokenType token;
+    TokenType type;
     char *text;
     QuoteCount quote;
     size_t pos;
-};
+} Token;
+
+
