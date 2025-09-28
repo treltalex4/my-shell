@@ -166,3 +166,75 @@ static void skip_spaces_and_comments(Lexer *lexer) {
     }
 }
 
+static Token lexer_extract_basic(Lexer *lexer){
+    if (!lexer || !lexer->input) 
+        return make_error_token(0, "lexer_extract_basic: null lexer");
+
+    size_t start = lexer->pos;
+
+    char *buf =  NULL; 
+    size_t len = 0, buf_size = 32;
+    size_t quote_single = 0, quote_double = 0, in_quote_single = 0, in_quote_double = 0;
+
+    while(lexer->pos < lexer->len){
+        char c = lexer->input[lexer->pos];
+
+        if(!in_quote_single && !in_quote_double){
+            if(c == ' ' || c == '\n' || c == '\t' || c == '\0'|| c == '\r' || c == '&' || c == ';' || c == '|' || c == '<' || c == '>'){
+                break;
+            }
+
+            if(c == '\\'){
+                if(lexer->pos + 1 >= lexer->len){
+                    free(buf);
+                    return make_error_token(start, "lexer_extract_basic: hanging \\");
+                }
+
+                char n = lexer->input[lexer->pos + 1];
+
+                if(n == '\\' || n == '"' || n == '$' || n == '`'){
+                    if(len + 2 > buf_size){
+                        buf_size *= 2;
+                        buf = realloc(buf, buf_size);
+                    }
+                    buf[len++] = n;
+                    lexer->pos += 2;
+                    continue;
+                }
+
+                if(n == '\n'){
+                    lexer->pos += 2;
+                    continue;
+                }
+                if(n == '\r'){
+                    if((lexer->pos + 2 < lexer->len) && (lexer->input[lexer->pos + 2] == '\n')){
+                        lexer->pos += 3;
+                    } else lexer->pos += 2;
+
+                    continue;
+                }
+
+                if(len + 2 > buf_size){
+                    buf_size *= 2;
+                    buf = realloc(buf, buf_size);
+                }
+                buf[len++] = c;
+                lexer->pos++;
+                continue; 
+            }
+            if(len + 2 > buf_size){
+                buf_size *= 2;
+                buf = realloc(buf, buf_size);
+            }
+            buf[len++] = c;
+            lexer->pos++;
+            continue;
+        }
+
+    }
+
+    Token token;
+    token.type = TOKEN_WORD;
+    token.text = buf;
+    return token;
+}
