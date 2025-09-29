@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define DEFAULT_BUF_SIZE 32
+
 static Token lexer_extract(Lexer *lexer);
 static Token lexer_extract_basic(Lexer *lexer);
 static Token lexer_extract_pipe(Lexer *lexer);
@@ -140,6 +142,7 @@ static Token make_simple_token(TokenType type, size_t pos){
     token.type = type;
     token.quote = QUOTE_NONE;
     token.pos = pos;
+    token.text = NULL;
     return token;
 }
 
@@ -172,14 +175,34 @@ static Token lexer_extract_basic(Lexer *lexer){
 
     size_t start = lexer->pos;
 
-    char *buf =  NULL; 
-    size_t len = 0, buf_size = 32;
-    size_t quote_single = 0, quote_double = 0, in_quote_single = 0, in_quote_double = 0;
+    size_t len = 0, buf_size = DEFAULT_BUF_SIZE;
+    char *buf = malloc(buf_size); 
+    if(!buf)
+        return make_error_token(start, "lexer_extract_basic: alloc fail");
+    QuoteCount quote_type = QUOTE_NONE, active_quote = QUOTE_NONE;
+    size_t quote_start = 0;
+
 
     while(lexer->pos < lexer->len){
         char c = lexer->input[lexer->pos];
 
-        if(!in_quote_single && !in_quote_double){
+        if(active_quote == QUOTE_NONE){
+            if(c == '\''){
+                quote_type = QUOTE_SINGLE;
+                active_quote = QUOTE_SINGLE;
+                quote_start = lexer->pos;
+                lexer->pos++;
+                continue;
+            }
+
+            if(c == '"'){
+                quote_type = QUOTE_DOUBLE;
+                active_quote = QUOTE_DOUBLE;
+                quote_start = lexer->pos;
+                lexer->pos++;
+                continue;
+            }
+
             if(c == ' ' || c == '\n' || c == '\t' || c == '\0'|| c == '\r' || c == '&' || c == ';' || c == '|' || c == '<' || c == '>'){
                 break;
             }
@@ -195,7 +218,12 @@ static Token lexer_extract_basic(Lexer *lexer){
                 if(n == '\\' || n == '"' || n == '$' || n == '`'){
                     if(len + 2 > buf_size){
                         buf_size *= 2;
-                        buf = realloc(buf, buf_size);
+                        char *tmp = realloc(buf, buf_size);
+                        if(!tmp){
+                            free(buf);
+                            return make_error_token(start, "lexer_extract_basic: alloc fail");
+                        }
+                        buf = tmp;
                     }
                     buf[len++] = n;
                     lexer->pos += 2;
@@ -216,15 +244,115 @@ static Token lexer_extract_basic(Lexer *lexer){
 
                 if(len + 2 > buf_size){
                     buf_size *= 2;
-                    buf = realloc(buf, buf_size);
+                    char *tmp = realloc(buf, buf_size);
+                    if(!tmp){
+                        free(buf);
+                        return make_error_token(start, "lexer_extract_basic: alloc fail");
+                    }
+                    buf = tmp;
                 }
-                buf[len++] = c;
+                buf[len++] = '\\';
                 lexer->pos++;
                 continue; 
             }
             if(len + 2 > buf_size){
                 buf_size *= 2;
-                buf = realloc(buf, buf_size);
+                char *tmp = realloc(buf, buf_size);
+                if(!tmp){
+                    free(buf);
+                    return make_error_token(start, "lexer_extract_basic: alloc fail");
+                }
+                buf = tmp;
+            }
+            buf[len++] = c;
+            lexer->pos++;
+            continue;
+        }
+        if(active_quote == QUOTE_SINGLE){
+            if(c == '\''){
+                active_quote = QUOTE_NONE;
+                lexer->pos++;
+                continue;
+            }
+            if(len + 2 > buf_size){
+                buf_size *= 2;
+                char *tmp = realloc(buf, buf_size);
+                if(!tmp){
+                    free(buf);
+                    return make_error_token(start, "lexer_extract_basic: alloc fail");
+                }
+                buf = tmp;
+            }
+            buf[len++] = c;
+            lexer->pos++;
+            continue;
+        }
+
+        if(active_quote == QUOTE_DOUBLE){
+            if(c == '"'){
+                active_quote = QUOTE_NONE;
+                lexer->pos++;
+                continue;
+            }
+
+            if(c == '\\'){
+                if(lexer->pos + 1 >= lexer->len){
+                    free(buf);
+                    return make_error_token(quote_start, "lexer_extract_basic: hanging \\");
+                }
+
+                char n = lexer->input[lexer->pos + 1];
+
+                if(n == '\\' || n == '"' || n == '$' || n == '`'){
+                    if(len + 2 > buf_size){
+                        buf_size *= 2;
+                        char *tmp = realloc(buf, buf_size);
+                        if(!tmp){
+                            free(buf);
+                            return make_error_token(start, "lexer_extract_basic: alloc fail");
+                        }
+                        buf = tmp;
+                    }
+                    buf[len++] = n;
+                    lexer->pos += 2;
+                    continue;
+                }
+
+                if(n == '\n'){
+                    lexer->pos += 2;
+                    continue;
+                }
+
+                if(n == '\r'){
+                    if((lexer->pos + 2 < lexer->len) && (lexer->input[lexer->pos + 2] == '\n')){
+                        lexer->pos += 3;
+                    } else lexer->pos += 2;
+
+                    continue;
+                }
+
+                if(len + 2 > buf_size){
+                    buf_size *= 2;
+                    char *tmp = realloc(buf, buf_size);
+                    if(!tmp){
+                        free(buf);
+                        return make_error_token(start, "lexer_extract_basic: alloc fail");
+                    }
+                    buf = tmp;
+                }
+                buf[len++] = '\\';
+                lexer->pos++;
+                continue;
+            }
+
+            if(len + 2 > buf_size){
+                buf_size *= 2;
+                char *tmp = realloc(buf, buf_size);
+                if(!tmp){
+                    free(buf);
+                    return make_error_token(start, "lexer_extract_basic: alloc fail");
+                }
+                buf = tmp;
             }
             buf[len++] = c;
             lexer->pos++;
@@ -233,8 +361,124 @@ static Token lexer_extract_basic(Lexer *lexer){
 
     }
 
-    Token token;
-    token.type = TOKEN_WORD;
-    token.text = buf;
-    return token;
+    if(active_quote != QUOTE_NONE){
+        free(buf);
+        return make_error_token(quote_start, "lexer_extract_basic: unclosed quots");
+    }
+
+    buf[len] = '\0';
+
+Token token;
+token.pos = start;
+token.quote = quote_type;
+token.type = TOKEN_WORD;
+token.text = buf;
+return token;
+}
+
+static Token lexer_extract_pipe(Lexer *lexer)
+{
+    if (!lexer || !lexer->input)
+        return make_error_token(0, "lexer_extract_pipe: null lexer");
+
+    size_t start = lexer->pos;
+
+    if (lexer->pos < lexer->len)
+        lexer->pos++;
+
+    if (lexer->pos < lexer->len) {
+        if (lexer->input[lexer->pos] == '&') {
+            lexer->pos++;
+            return make_simple_token(TOKEN_PIPE_ERR, start);
+        }
+    }
+
+    return make_simple_token(TOKEN_PIPE, start);
+}
+
+static Token lexer_extract_redir(Lexer *lexer)
+{
+    if (!lexer || !lexer->input)
+        return make_error_token(0, "lexer_extract_redir: null lexer");
+
+    size_t start = lexer->pos;
+
+    if (lexer->pos >= lexer->len)
+        return make_error_token(start, "lexer_extract_redir: out of range");
+
+    switch (lexer->input[lexer->pos]) {
+    case '>':
+        lexer->pos++;
+        if (lexer->pos < lexer->len && lexer->input[lexer->pos] == '>') {
+            lexer->pos++;
+            return make_simple_token(TOKEN_REDIR_OUT_APPEND, start);
+        }
+        return make_simple_token(TOKEN_REDIR_OUT, start);
+
+    case '<':
+        lexer->pos++;
+        return make_simple_token(TOKEN_REDIR_IN, start);
+
+    case '&':
+        lexer->pos++;
+        if (lexer->pos >= lexer->len || lexer->input[lexer->pos] != '>')
+            return make_error_token(start, "lexer_extract_redir: expected '>' after '&'");
+
+        lexer->pos++;
+        if (lexer->pos < lexer->len && lexer->input[lexer->pos] == '>') {
+            lexer->pos++;
+            return make_simple_token(TOKEN_REDIR_ERR_APPEND, start);
+        }
+        return make_simple_token(TOKEN_REDIR_ERR, start);
+
+    default:
+        return make_error_token(start, "lexer_extract_redir: unexpected char");
+    }
+}
+
+void lexer_free_token(Token *token)
+{
+    if(!token)
+        return;
+
+    if(token->text){
+        free(token->text);
+        token->text = NULL;
+    }
+}
+
+static Token lexer_extract_control(Lexer *lexer)
+{
+    if (!lexer || !lexer->input)
+        return make_error_token(0, "lexer_extract_control: null lexer");
+
+    size_t start = lexer->pos;
+
+    if (lexer->pos >= lexer->len)
+        return make_error_token(start, "lexer_extract_control: out of range");
+
+    switch (lexer->input[lexer->pos]) {
+    case '&':
+        lexer->pos++;
+        if (lexer->pos < lexer->len && lexer->input[lexer->pos] == '&') {
+            lexer->pos++;
+            return make_simple_token(TOKEN_AND, start);
+        }
+        return make_simple_token(TOKEN_AMP, start);
+
+    case ';':
+        lexer->pos++;
+        return make_simple_token(TOKEN_SEMI, start);
+
+    case '|':
+        lexer->pos++;
+        if (lexer->pos < lexer->len && lexer->input[lexer->pos] == '|') {
+            lexer->pos++;
+            return make_simple_token(TOKEN_OR, start);
+        }
+        return make_simple_token(TOKEN_PIPE, start);
+
+    default:
+        return make_error_token(start, "lexer_extract_control: unexpected char");
+    }
 }
