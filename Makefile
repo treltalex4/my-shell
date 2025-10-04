@@ -41,7 +41,7 @@ run: $(TARGET)
 
 valrun: $(TARGET)
 	@echo "Running with valgrind..."
-	@valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -s -q $(TARGET)
+	@valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --track-fds=yes -s -q $(TARGET)
 
 debug: $(TARGET)
 	@echo "Debugging..."
