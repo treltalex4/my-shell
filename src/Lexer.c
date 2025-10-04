@@ -216,7 +216,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                 char n = lexer->input[lexer->pos + 1];
 
                 if(n == '\\' || n == '"' || n == '$' || n == '`'){
-                    if(len + 2 > buf_size){
+                    if(len + 1 >= buf_size){
                         buf_size *= 2;
                         char *tmp = realloc(buf, buf_size);
                         if(!tmp){
@@ -242,7 +242,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                     continue;
                 }
 
-                if(len + 2 > buf_size){
+                if(len + 1 >= buf_size){
                     buf_size *= 2;
                     char *tmp = realloc(buf, buf_size);
                     if(!tmp){
@@ -251,11 +251,11 @@ static Token lexer_extract_basic(Lexer *lexer){
                     }
                     buf = tmp;
                 }
-                buf[len++] = '\\';
-                lexer->pos++;
+                buf[len++] = n;
+                lexer->pos += 2;
                 continue; 
             }
-            if(len + 2 > buf_size){
+            if(len + 1 >= buf_size){
                 buf_size *= 2;
                 char *tmp = realloc(buf, buf_size);
                 if(!tmp){
@@ -274,7 +274,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                 lexer->pos++;
                 continue;
             }
-            if(len + 2 > buf_size){
+            if(len + 1 >= buf_size){
                 buf_size *= 2;
                 char *tmp = realloc(buf, buf_size);
                 if(!tmp){
@@ -304,7 +304,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                 char n = lexer->input[lexer->pos + 1];
 
                 if(n == '\\' || n == '"' || n == '$' || n == '`'){
-                    if(len + 2 > buf_size){
+                    if(len + 1 >= buf_size){
                         buf_size *= 2;
                         char *tmp = realloc(buf, buf_size);
                         if(!tmp){
@@ -331,7 +331,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                     continue;
                 }
 
-                if(len + 2 > buf_size){
+                if(len + 1 >= buf_size){
                     buf_size *= 2;
                     char *tmp = realloc(buf, buf_size);
                     if(!tmp){
@@ -345,7 +345,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                 continue;
             }
 
-            if(len + 2 > buf_size){
+            if(len + 1 >= buf_size){
                 buf_size *= 2;
                 char *tmp = realloc(buf, buf_size);
                 if(!tmp){
@@ -366,6 +366,14 @@ static Token lexer_extract_basic(Lexer *lexer){
         return make_error_token(quote_start, "lexer_extract_basic: unclosed quots");
     }
 
+    if(len + 1 > buf_size){
+        buf_size *= 2;
+        char *tmp = realloc(buf, buf_size);
+        if(!tmp){
+            free(buf);
+            return make_error_token(start, "lexer_extract_basic: alloc fail");
+        }
+    }
     buf[len] = '\0';
 
 Token token;
