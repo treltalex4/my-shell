@@ -41,18 +41,27 @@ static void print_token(const Token *token){
     const char *type = token_type_to_str(token->type);
     const char *quote = quote_to_str(token->quote);
 
-    printf("Token %s, pos(%zu)", type, token->pos);
+    printf("%s @%zu", type, token->pos);
 
     if(token->text){
         printf(" text=\"%s\"", token->text);
     }
 
-    if(token->type == TOKEN_WORD){
+    if(token->quote != QUOTE_NONE){
         printf(" quote=%s", quote);
     }
-    
 
     putchar('\n');
+}
+
+static void free_tokens(Token *tokens, size_t count){
+    if(!tokens) return;
+
+    for(size_t i = 0; i < count; ++i){
+        lexer_free_token(&tokens[i]);
+    }
+
+    free(tokens);
 }
 
 int main(){
@@ -75,16 +84,39 @@ int main(){
 
         lexer_init(&lexer, line);
 
-        for(;;){
+        Token *tokens = NULL;
+        size_t count = 0;
+        size_t capacity = 0;
+
+        int stop = 0;
+        while(!stop){
             Token token = lexer_tokenize(&lexer);
-            print_token(&token);
 
-            int stop = (token.type == TOKEN_EOF) || (token.type == TOKEN_ERROR);
-            lexer_free_token(&token);
+            if(count == capacity){
+                size_t new_capacity = capacity ? capacity * 2 : 8;
+                Token *tmp = realloc(tokens, new_capacity * sizeof(Token));
+                if(!tmp){
+                    perror("lexer: failed to grow token array");
+                    lexer_free_token(&token);
+                    free_tokens(tokens, count);
+                    tokens = NULL;
+                    count = 0;
+                    break;
+                }
 
-            if(stop)
-                break;
+                tokens = tmp;
+                capacity = new_capacity;
+            }
+
+            tokens[count++] = token;
+            stop = (token.type == TOKEN_EOF) || (token.type == TOKEN_ERROR);
         }
+
+        for(size_t i = 0; i < count; ++i){
+            print_token(&tokens[i]);
+        }
+
+        free_tokens(tokens, count);
 
         lexer_destroy(&lexer);
     }
