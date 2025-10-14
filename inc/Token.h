@@ -21,7 +21,10 @@ typedef enum TokenType {
     TOKEN_SEMI, // ;
     TOKEN_AND, // &&
     TOKEN_OR, // ||
-    TOKEN_AMP // &
+    TOKEN_AMP, // &
+
+    TOKEN_LPAREN,
+    TOKEN_RPAREN
 } TokenType;
 
 typedef enum QuoteCount {

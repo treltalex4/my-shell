@@ -22,6 +22,8 @@ static const char *token_type_to_str(TokenType type){
     case TOKEN_AND: return "AND";
     case TOKEN_OR: return "OR";
     case TOKEN_AMP: return "AMP";
+    case TOKEN_LPAREN: return "LPAREN";
+    case TOKEN_RPAREN: return "RPAREN";
     default: return "UNKNOWN";
     }
 }

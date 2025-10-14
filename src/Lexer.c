@@ -92,6 +92,12 @@ static Token lexer_extract(Lexer *lexer){
         return lexer_extract_control(lexer);
     case ';':
         return lexer_extract_control(lexer);
+    case '(':
+        lexer->pos++;
+        return make_simple_token(TOKEN_LPAREN, token_pos);
+    case ')':
+        lexer->pos++;
+        return make_simple_token(TOKEN_RPAREN, token_pos);
     default:
         return lexer_extract_basic(lexer);
     }
@@ -186,7 +192,7 @@ static Token lexer_extract_basic(Lexer *lexer){
                 continue;
             }
 
-            if(c == ' ' || c == '\n' || c == '\t' || c == '\0'|| c == '\r' || c == '&' || c == ';' || c == '|' || c == '<' || c == '>'){
+            if(c == ' ' || c == '\n' || c == '\t' || c == '\0'|| c == '\r' || c == '&' || c == ';' || c == '|' || c == '<' || c == '>' || c == '(' || c == ')'){
                 break;
             }
 
