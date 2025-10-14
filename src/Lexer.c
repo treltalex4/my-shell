@@ -2,8 +2,8 @@
 
 #include "Lexer.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #define DEFAULT_BUF_SIZE 32
 
@@ -18,10 +18,7 @@ static Token make_simple_token(TokenType type, size_t pos);
 static void skip_spaces_and_comments(Lexer *lexer);
 
 void lexer_init(Lexer *lexer, const char *input){
-    if(!lexer){
-        perror("lexer_init: null ptr\n");
-        return;
-    }
+    assert(lexer && "lexer_init: null ptr");
 
     lexer->input = input;
     lexer->pos = 0;
@@ -30,10 +27,7 @@ void lexer_init(Lexer *lexer, const char *input){
 }
 
 void lexer_reset(Lexer *lexer, const char *input){
-    if(!lexer){
-        perror("lexer_reset: null ptr\n");
-        return;
-    }
+    assert(lexer && "lexer_reset: null ptr");
 
     lexer->input = input;
     lexer->pos = 0;
@@ -42,10 +36,7 @@ void lexer_reset(Lexer *lexer, const char *input){
 }
 
 void lexer_destroy(Lexer *lexer){
-    if(!lexer){
-        perror("lexer_reset: null ptr\n");
-        return;
-    }
+    assert(lexer && "lexer_reset: null ptr");
 
     lexer->input = NULL;
     lexer->pos = 0;
@@ -55,23 +46,15 @@ void lexer_destroy(Lexer *lexer){
 
 Token lexer_tokenize(Lexer *lexer)
 {
-    if (!lexer) {
-        perror("lexer_tokenize: null ptr");
-        return make_error_token(0, "lexer_tokenize: null ptr");
-    }
+    assert(lexer && "lexer_tokenize: null ptr");
 
-    if (!lexer->input) {
-        perror("lexer_tokenize: null input");
-        return make_error_token(lexer->pos, "lexer_tokenize: null input");
-    }
+    assert(lexer->input && "lexer_init: null input");
 
     return lexer_extract(lexer);
 }
 
 static Token lexer_extract(Lexer *lexer){
-    if (!lexer) {
-        return make_error_token(0, "lexer_extract: null lexer");
-    }
+    assert(lexer && "lexer_init: null lexer");
 
     skip_spaces_and_comments(lexer);
 
