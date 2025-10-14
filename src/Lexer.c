@@ -1,6 +1,7 @@
 // Lexer.c
 
 #include "Lexer.h"
+#include "Utils.h"
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -16,6 +17,16 @@ static Token lexer_extract_control(Lexer *lexer);
 static Token make_error_token(size_t pos, const char *message);
 static Token make_simple_token(TokenType type, size_t pos);
 static void skip_spaces_and_comments(Lexer *lexer);
+static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required);
+
+static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required) {
+    if (buf_size_check(buf, buf_size, required)) {
+        return 1;
+    }
+    perror("lexer_extract_basic: alloc fail");
+    return 0;
+}
+
 
 void lexer_init(Lexer *lexer, const char *input){
     assert(lexer && "lexer_init: null ptr");
@@ -205,14 +216,9 @@ static Token lexer_extract_basic(Lexer *lexer){
                 char n = lexer->input[lexer->pos + 1];
 
                 if(n == '\\' || n == '"' || n == '$' || n == '`'){
-                    if(len + 1 >= buf_size){
-                        buf_size *= 2;
-                        char *tmp = realloc(buf, buf_size);
-                        if(!tmp){
-                            free(buf);
-                            return make_error_token(start, "lexer_extract_basic: alloc fail");
-                        }
-                        buf = tmp;
+                    if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                        free(buf);
+                        return make_error_token(start, "lexer_extract_basic: alloc fail");
                     }
                     buf[len++] = n;
                     lexer->pos += 2;
@@ -231,27 +237,17 @@ static Token lexer_extract_basic(Lexer *lexer){
                     continue;
                 }
 
-                if(len + 1 >= buf_size){
-                    buf_size *= 2;
-                    char *tmp = realloc(buf, buf_size);
-                    if(!tmp){
-                        free(buf);
-                        return make_error_token(start, "lexer_extract_basic: alloc fail");
-                    }
-                    buf = tmp;
+                if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                    free(buf);
+                    return make_error_token(start, "lexer_extract_basic: alloc fail");
                 }
                 buf[len++] = n;
                 lexer->pos += 2;
                 continue; 
             }
-            if(len + 1 >= buf_size){
-                buf_size *= 2;
-                char *tmp = realloc(buf, buf_size);
-                if(!tmp){
-                    free(buf);
-                    return make_error_token(start, "lexer_extract_basic: alloc fail");
-                }
-                buf = tmp;
+            if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                free(buf);
+                return make_error_token(start, "lexer_extract_basic: alloc fail");
             }
             buf[len++] = c;
             lexer->pos++;
@@ -263,14 +259,9 @@ static Token lexer_extract_basic(Lexer *lexer){
                 lexer->pos++;
                 continue;
             }
-            if(len + 1 >= buf_size){
-                buf_size *= 2;
-                char *tmp = realloc(buf, buf_size);
-                if(!tmp){
-                    free(buf);
-                    return make_error_token(start, "lexer_extract_basic: alloc fail");
-                }
-                buf = tmp;
+            if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                free(buf);
+                return make_error_token(start, "lexer_extract_basic: alloc fail");
             }
             buf[len++] = c;
             lexer->pos++;
@@ -293,14 +284,9 @@ static Token lexer_extract_basic(Lexer *lexer){
                 char n = lexer->input[lexer->pos + 1];
 
                 if(n == '\\' || n == '"' || n == '$' || n == '`'){
-                    if(len + 1 >= buf_size){
-                        buf_size *= 2;
-                        char *tmp = realloc(buf, buf_size);
-                        if(!tmp){
-                            free(buf);
-                            return make_error_token(start, "lexer_extract_basic: alloc fail");
-                        }
-                        buf = tmp;
+                    if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                        free(buf);
+                        return make_error_token(start, "lexer_extract_basic: alloc fail");
                     }
                     buf[len++] = n;
                     lexer->pos += 2;
@@ -320,28 +306,18 @@ static Token lexer_extract_basic(Lexer *lexer){
                     continue;
                 }
 
-                if(len + 1 >= buf_size){
-                    buf_size *= 2;
-                    char *tmp = realloc(buf, buf_size);
-                    if(!tmp){
-                        free(buf);
-                        return make_error_token(start, "lexer_extract_basic: alloc fail");
-                    }
-                    buf = tmp;
+                if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                    free(buf);
+                    return make_error_token(start, "lexer_extract_basic: alloc fail");
                 }
                 buf[len++] = '\\';
                 lexer->pos++;
                 continue;
             }
 
-            if(len + 1 >= buf_size){
-                buf_size *= 2;
-                char *tmp = realloc(buf, buf_size);
-                if(!tmp){
-                    free(buf);
-                    return make_error_token(start, "lexer_extract_basic: alloc fail");
-                }
-                buf = tmp;
+            if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+                free(buf);
+                return make_error_token(start, "lexer_extract_basic: alloc fail");
             }
             buf[len++] = c;
             lexer->pos++;
@@ -355,13 +331,9 @@ static Token lexer_extract_basic(Lexer *lexer){
         return make_error_token(quote_start, "lexer_extract_basic: unclosed quots");
     }
 
-    if(len + 1 > buf_size){
-        buf_size *= 2;
-        char *tmp = realloc(buf, buf_size);
-        if(!tmp){
-            free(buf);
-            return make_error_token(start, "lexer_extract_basic: alloc fail");
-        }
+    if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
+        free(buf);
+        return make_error_token(start, "lexer_extract_basic: alloc fail");
     }
     buf[len] = '\0';
 
