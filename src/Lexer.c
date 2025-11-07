@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #define DEFAULT_BUF_SIZE 32
+#define DEFAULT_ARR_SIZE 16
 
 static Token lexer_extract(Lexer *lexer);
 static Token lexer_extract_basic(Lexer *lexer);
@@ -450,4 +451,65 @@ static Token lexer_extract_control(Lexer *lexer)
     default:
         return make_error_token(start, "lexer_extract_control: unexpected char");
     }
+}
+
+void token_array_init(TokenArray *array){
+    assert(array && "token_array_init: null ptr");
+
+    array->capacity = 0;
+    array->count = 0;
+    array->tokens = NULL;
+}
+
+int token_array_push(TokenArray *array, Token token){
+    assert(array && "token_array_push: null array ptr");
+
+    if(array->count == array->capacity){
+        size_t new_capacity = array->capacity == 0 ? DEFAULT_ARR_SIZE : array->capacity * 2;
+        Token *tmp = realloc(array->tokens, new_capacity * sizeof(Token));
+        if(!tmp){
+            return 0;
+        }
+        array->tokens = tmp;
+        array->capacity = new_capacity;
+    }
+
+    array->tokens[array->count] = token;
+    array->count++;
+
+    return 1;
+}
+
+void token_array_free(TokenArray *array){
+    assert(array && "token_array_free: null array ptr");
+
+    for(size_t i = 0; i < array->count; ++i){
+        lexer_free_token(&array->tokens[i]);
+    }
+
+    free(array->tokens);
+    array->tokens = NULL;
+    array->capacity = 0;
+    array->count = 0;
+}
+
+int lexer_tokenize_all(Lexer *lexer, TokenArray *array){
+    assert(array && "lexer_tokenize_all: null array");
+    assert(lexer && "lexer_tokenize_all: null lexer");
+
+    token_array_init(array);
+    while(1){
+        Token token = lexer_tokenize(lexer);
+
+        if(!token_array_push(array, token)){
+            lexer_free_token(&token);
+            token_array_free(array);
+            return 0;
+        }
+
+        if(token.type == TOKEN_EOF || token.type == TOKEN_ERROR){
+            break;
+        }
+    }
+    return 1;
 }

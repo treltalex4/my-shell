@@ -1,5 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
-
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -56,16 +55,6 @@ static void print_token(const Token *token){
     putchar('\n');
 }
 
-static void free_tokens(Token *tokens, size_t count){
-    if(!tokens) return;
-
-    for(size_t i = 0; i < count; ++i){
-        lexer_free_token(&tokens[i]);
-    }
-
-    free(tokens);
-}
-
 int main(){
     Lexer lexer;
     char *line = NULL;
@@ -86,40 +75,18 @@ int main(){
 
         lexer_init(&lexer, line);
 
-        Token *tokens = NULL;
-        size_t count = 0;
-        size_t capacity = 0;
-
-        int stop = 0;
-        while(!stop){
-            Token token = lexer_tokenize(&lexer);
-
-            if(count == capacity){
-                size_t new_capacity = capacity ? capacity * 2 : 8;
-                Token *tmp = realloc(tokens, new_capacity * sizeof(Token));
-                if(!tmp){
-                    perror("lexer: failed to grow token array");
-                    lexer_free_token(&token);
-                    free_tokens(tokens, count);
-                    tokens = NULL;
-                    count = 0;
-                    break;
-                }
-
-                tokens = tmp;
-                capacity = new_capacity;
-            }
-
-            tokens[count++] = token;
-            stop = (token.type == TOKEN_EOF) || (token.type == TOKEN_ERROR);
+        TokenArray tokens;
+        if(!lexer_tokenize_all(&lexer, &tokens)){
+            fprintf(stderr, "tokenize failed\n");
+            lexer_destroy(&lexer);
+            continue;
         }
 
-        for(size_t i = 0; i < count; ++i){
-            print_token(&tokens[i]);
+        for(size_t i = 0; i < tokens.count; ++i){
+            print_token(&tokens.tokens[i]);
         }
 
-        free_tokens(tokens, count);
-
+        token_array_free(&tokens);
         lexer_destroy(&lexer);
     }
 
