@@ -20,6 +20,9 @@ static Token make_simple_token(TokenType type, size_t pos);
 static void skip_spaces_and_comments(Lexer *lexer);
 static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required);
 
+//static int extract_single_quoted();
+
+
 static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required) {
     if (buf_size_check(buf, buf_size, required)) {
         return 1;
