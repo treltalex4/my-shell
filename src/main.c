@@ -5,9 +5,10 @@
 #include <string.h>
 
 #include "Lexer.h"
+#include "Parser.h"
 #include "getline.h"
 
-static const char *token_type_to_str(TokenType type){
+/*static const char *token_type_to_str(TokenType type){
     switch(type){
     case TOKEN_WORD: return "WORD";
     case TOKEN_NEWLINE: return "NEWLINE";
@@ -56,7 +57,7 @@ static void print_token(const Token *token){
     }
 
     putchar('\n');
-}
+}*/
 
 static int has_unclosed_quotes(const char *str){
     int single = 0;
@@ -83,6 +84,7 @@ static char* str_concat(char *s1, const char *s2){
     
     char *result = realloc(s1, len1 + len2 + 1);
     if(!result){
+        perror("str_concat: realloc failed");
         free(s1);
         return NULL;
     }
@@ -114,6 +116,7 @@ static char* read_command(void){
         free(next_line);
         
         if(!command){
+            fprintf(stderr, "Error: failed to concatenate command lines\n");
             return NULL;
         }
     }
@@ -123,6 +126,7 @@ static char* read_command(void){
 
 int main(){
     Lexer lexer;
+    Parser parser;
 
     for(;;){
         char *line = read_command();
@@ -146,8 +150,12 @@ int main(){
             continue;
         }
 
-        for(size_t i = 0; i < tokens.count; ++i){
-            print_token(&tokens.tokens[i]);
+        parser_init(&parser, &tokens);
+        ASTNode *tree = parser_parse(&parser);
+        
+        if(tree){
+            ast_print(tree, 0);
+            ast_free(tree);
         }
 
         token_array_free(&tokens);
