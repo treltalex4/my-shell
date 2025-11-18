@@ -1,5 +1,6 @@
 #include "AST.h"
 #include <stdio.h>
+#include <assert.h>
 
 static const char *redirect_type_to_str(RedirectType type){
     static const char *names[] = {
