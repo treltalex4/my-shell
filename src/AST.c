@@ -1,9 +1,20 @@
 #include "AST.h"
 #include <stdio.h>
 
+static const char *redirect_type_to_str(RedirectType type){
+    static const char *names[] = {
+        [REDIR_IN] = "REDIR_IN",
+        [REDIR_OUT] = "REDIR_OUT",
+        [REDIR_OUT_APPEND] = "REDIR_OUT_APPEND",
+        [REDIR_ERR] = "REDIR_ERR",
+        [REDIR_ERR_APPEND] = "REDIR_ERR_APPEND"
+    };
+    return names[type];
+}
+
 ASTNode *ast_create_command(char **args, size_t argc){
     ASTNode *node = malloc(sizeof(ASTNode));
-    if(!node) return NULL;
+    assert(node && "ast_create_command: malloc failed");
 
     node->type = AST_COMMAND;
     node->data.command.args = args;
@@ -13,7 +24,7 @@ ASTNode *ast_create_command(char **args, size_t argc){
 
 ASTNode *ast_create_binary(ASTNodeType type, ASTNode *left, ASTNode *right){
     ASTNode *node = malloc(sizeof(ASTNode));
-    if(!node) return NULL;
+    assert(node && "ast_create_binary: malloc failed");
 
     node->type = type;
     node->data.binary.left = left;
@@ -23,7 +34,7 @@ ASTNode *ast_create_binary(ASTNodeType type, ASTNode *left, ASTNode *right){
 
 ASTNode *ast_create_subshell(ASTNode *inner){
     ASTNode *node = malloc(sizeof(ASTNode));
-    if(!node) return NULL;
+    assert(node && "ast_create_subshell: malloc failed");
 
     node->type = AST_SUBSHELL;
     node->data.subshell = inner;
@@ -32,7 +43,10 @@ ASTNode *ast_create_subshell(ASTNode *inner){
 
 ASTNode *ast_create_redirect(ASTNode *command, RedirectType redir_type, char *filename){
     ASTNode *node = malloc(sizeof(ASTNode));
-    if(!node) return NULL;
+    if(!node){
+        free(filename);
+    }
+    assert(node && "ast_create_redirect: malloc failed");
 
     node->type = AST_REDIRECT;
     node->data.redirect.type = redir_type;
@@ -135,8 +149,8 @@ void ast_print(ASTNode *node, int indent){
             break;
             
         case AST_REDIRECT:
-            printf("REDIRECT: type=%d file=%s\n",
-                   node->data.redirect.type,
+            printf("REDIRECT: type=%s file=%s\n",
+                   redirect_type_to_str(node->data.redirect.type),
                    node->data.redirect.filename);
             ast_print(node->data.redirect.command, indent + 2);
             break;

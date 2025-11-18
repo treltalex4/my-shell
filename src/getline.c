@@ -10,6 +10,7 @@ char* my_getline(void) {
     
     char *line = malloc(size);
     if (!line) {
+        perror("my_getline: malloc failed");
         return NULL;
     }
     
@@ -20,6 +21,7 @@ char* my_getline(void) {
             size *= 2;
             char *new_line = realloc(line, size);
             if (!new_line) {
+                perror("my_getline: realloc failed");
                 free(line);
                 return NULL;
             }
@@ -41,6 +43,7 @@ char* my_getline(void) {
     if (pos >= size) {
         char *new_line = realloc(line, size + 1);
         if (!new_line) {
+            perror("my_getline: realloc failed");
             free(line);
             return NULL;
         }

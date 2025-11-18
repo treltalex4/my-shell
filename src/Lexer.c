@@ -20,7 +20,6 @@ static Token make_simple_token(TokenType type, size_t pos);
 static void skip_spaces_and_comments(Lexer *lexer);
 static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required);
 
-//static int extract_single_quoted();
 
 
 static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required) {
@@ -38,7 +37,6 @@ void lexer_init(Lexer *lexer, const char *input){
     lexer->input = input;
     lexer->pos = 0;
     lexer->len = strlen(input);
-    return;
 }
 
 void lexer_reset(Lexer *lexer, const char *input){
@@ -47,16 +45,13 @@ void lexer_reset(Lexer *lexer, const char *input){
     lexer->input = input;
     lexer->pos = 0;
     lexer->len = strlen(input);
-    return;
 }
-
 void lexer_destroy(Lexer *lexer){
     assert(lexer && "lexer_reset: null ptr");
 
     lexer->input = NULL;
     lexer->pos = 0;
     lexer->len = 0;
-    return;
 }
 
 Token lexer_tokenize(Lexer *lexer)
@@ -332,7 +327,7 @@ static Token lexer_extract_basic(Lexer *lexer){
 
     if(active_quote != QUOTE_NONE){
         free(buf);
-        return make_error_token(quote_start, "lexer_extract_basic: unclosed quots");
+        return make_error_token(quote_start, "lexer_extract_basic: unclosed quotes");
     }
 
     if (!lexer_grow_buffer(&buf, &buf_size, len + 1)) {
