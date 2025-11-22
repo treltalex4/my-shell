@@ -26,7 +26,6 @@ static int lexer_grow_buffer(char **buf, size_t *buf_size, size_t required) {
     if (buf_size_check(buf, buf_size, required)) {
         return 1;
     }
-    perror("lexer_extract_basic: alloc fail");
     return 0;
 }
 
@@ -126,7 +125,7 @@ static Token make_error_token(size_t pos, const char *message){
             memcpy(copy, message, len);
             token.text = copy;
         } else {
-            perror("lexer: failed to allocate error message");
+            fprintf(stderr, "lexer: failed to allocate error message\n");
             token.text = NULL;
         }
     } else {

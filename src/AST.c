@@ -44,9 +44,6 @@ ASTNode *ast_create_subshell(ASTNode *inner){
 
 ASTNode *ast_create_redirect(ASTNode *command, RedirectType redir_type, char *filename){
     ASTNode *node = malloc(sizeof(ASTNode));
-    if(!node){
-        free(filename);
-    }
     assert(node && "ast_create_redirect: malloc failed");
 
     node->type = AST_REDIRECT;

@@ -264,7 +264,7 @@ static ASTNode *parse_simple_command(Parser *parser){
 
     ASTNode *node = ast_create_command(args, count);
     if(!node){
-        perror("parse_simple_command: ast_create_command failed");
+        fprintf(stderr, "parse_simple_command: ast_create_command failed\n");
         for(size_t i = 0; i < count; i++){
             free(args[i]);
         }
@@ -348,7 +348,7 @@ static ASTNode *parse_primary(Parser* parser){
         
         ASTNode *subshell = ast_create_subshell(inner);
         if(!subshell){
-            perror("parse_primary: ast_create_subshell failed");
+            fprintf(stderr, "parse_primary: ast_create_subshell failed\n");
             ast_free(inner);
             return NULL;
         }
