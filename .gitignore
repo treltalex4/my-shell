@@ -54,5 +54,8 @@ dkms.conf
 # debug information files
 *.dwo
 
-#main
+# test
+test_*.c
+
+# main
 main
