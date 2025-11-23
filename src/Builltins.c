@@ -91,7 +91,7 @@ static int builtin_cd(char **args){
     }
 
     if(chdir(path) == -1){
-        perror("builtin_cd: failed to changed directory");
+        perror("builtin_cd: failed to change directory");
         return 1;
     }
 
