@@ -6,58 +6,9 @@
 
 #include "Lexer.h"
 #include "Parser.h"
+#include "Executor.h"
 #include "getline.h"
 
-/*static const char *token_type_to_str(TokenType type){
-    switch(type){
-    case TOKEN_WORD: return "WORD";
-    case TOKEN_NEWLINE: return "NEWLINE";
-    case TOKEN_EOF: return "EOF";
-    case TOKEN_ERROR: return "ERROR";
-    case TOKEN_PIPE: return "PIPE";
-    case TOKEN_PIPE_ERR: return "PIPE_ERR";
-    case TOKEN_REDIR_OUT: return "REDIR_OUT";
-    case TOKEN_REDIR_OUT_APPEND: return "REDIR_OUT_APPEND";
-    case TOKEN_REDIR_IN: return "REDIR_IN";
-    case TOKEN_REDIR_ERR: return "REDIR_ERR";
-    case TOKEN_REDIR_ERR_APPEND: return "REDIR_ERR_APPEND";
-    case TOKEN_SEMI: return "SEMI";
-    case TOKEN_AND: return "AND";
-    case TOKEN_OR: return "OR";
-    case TOKEN_AMP: return "AMP";
-    case TOKEN_LPAREN: return "LPAREN";
-    case TOKEN_RPAREN: return "RPAREN";
-    default: return "UNKNOWN";
-    }
-}
-
-static const char *quote_to_str(QuoteCount quote){
-    switch(quote){
-    case QUOTE_NONE: return "NONE";
-    case QUOTE_SINGLE: return "SINGLE";
-    case QUOTE_DOUBLE: return "DOUBLE";
-    default: return "?";
-    }
-}
-
-static void print_token(const Token *token){
-    if(!token) return;
-
-    const char *type = token_type_to_str(token->type);
-    const char *quote = quote_to_str(token->quote);
-
-    printf("%s @%zu", type, token->pos);
-
-    if(token->text){
-        printf(" text=\"%s\"", token->text);
-    }
-
-    if(token->quote != QUOTE_NONE){
-        printf(" quote=%s", quote);
-    }
-
-    putchar('\n');
-}*/
 
 static int has_unclosed_quotes(const char *str){
     int single = 0;
@@ -154,7 +105,7 @@ int main(){
         ASTNode *tree = parser_parse(&parser);
         
         if(tree){
-            ast_print(tree, 0);
+            executor_execute(tree);
             ast_free(tree);
         }
 
