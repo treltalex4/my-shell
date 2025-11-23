@@ -262,6 +262,21 @@ static ASTNode *parse_simple_command(Parser *parser){
         return NULL;
     }
 
+    if(count >= capacity){
+        capacity++;
+        char **new_args = realloc(args, capacity * sizeof(char *));
+        if(!new_args){
+            perror("parse_simple_command: realloc failed");
+            for(size_t i = 0; i < count; i++){
+                free(args[i]);
+            }
+            free(args);
+            return NULL;
+        }
+        args = new_args;
+    }
+    args[count] = NULL;
+
     ASTNode *node = ast_create_command(args, count);
     if(!node){
         fprintf(stderr, "parse_simple_command: ast_create_command failed\n");
