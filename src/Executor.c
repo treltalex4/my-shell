@@ -43,7 +43,22 @@ int executor_execute(ASTNode *root){
         return executor_execute(root->data.binary.right);
 
     case AST_BACKGROUND:
-        return execute_command(root);
+        {
+            pid_t pid = fork();
+            
+            if(pid < 0){
+                perror("fork");
+                return 1;
+            }
+            
+            if(pid == 0){
+                int code = executor_execute(root->data.subshell);
+                exit(code);
+            }
+            
+            printf("[%d]\n", pid);
+            return 0;
+        }
 
     default:
         fprintf(stderr, "executor_execute: unknown node type\n");
