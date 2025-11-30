@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Werror -g
+CFLAGS = -Wall -Wextra -Werror -g -D_GNU_SOURCE
 CPPFLAGS = -I$(INC_DIR) -MMD -MP -MF $(DEP_DIR)/$*.d
 LDFLAGS = -lm
 
