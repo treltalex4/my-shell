@@ -1,10 +1,12 @@
 //Builtins.c
 #include "Builtins.h"
+#include "JobControl.h"
 
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #define PATH_MAX_SIZE 1024
 
@@ -13,6 +15,10 @@ static int builtin_pwd(char **args);
 static int builtin_echo(char **args);
 static int builtin_exit(char **args);
 static int builtin_help(char **args);
+static int builtin_jobs(char **args);
+static int builtin_fg(char **args);
+static int builtin_bg(char **args);
+static int builtin_kill(char **args);
 
 int is_builtin(const char *command) {
     static const char *builtins[] = {
@@ -21,6 +27,10 @@ int is_builtin(const char *command) {
         "echo",
         "exit",
         "help",
+        "jobs",
+        "fg",
+        "bg",
+        "kill",
         NULL
     };
     
@@ -47,6 +57,18 @@ int execute_builtin(char **args){
     }
     else if(strcmp(args[0], "help") == 0){
         return builtin_help(args);
+    }
+    else if(strcmp(args[0], "jobs") == 0){
+        return builtin_jobs(args);
+    }
+    else if(strcmp(args[0], "fg") == 0){
+        return builtin_fg(args);
+    }
+    else if(strcmp(args[0], "bg") == 0){
+        return builtin_bg(args);
+    }
+    else if(strcmp(args[0], "kill") == 0){
+        return builtin_kill(args);
     }
 
     fprintf(stderr, "%s: builtin not found\n", args[0]);
@@ -143,5 +165,102 @@ static int builtin_help(char **args){
     printf("  echo [args]    Print arguments\n");
     printf("  exit [code]    Exit shell\n");
     printf("  help           Show this help\n");
+    printf("  jobs           List all jobs\n");
+    printf("  fg [job_id]    Bring job to foreground\n");
+    printf("  bg [job_id]    Resume job in background\n");
+    printf("  kill [job_id]  Send SIGTERM to job\n");
+    return 0;
+}
+
+static int builtin_jobs(char **args){
+    (void)args;  // Unused parameter
+    JobList *list = job_list_get();
+    job_list_print(list);
+    return 0;
+}
+
+static int builtin_fg(char **args){
+    JobList *list = job_list_get();
+    Job *job = NULL;
+    
+    if(args[1] == NULL){
+        // Взять последнюю задачу
+        job = list->tail;
+        if(!job){
+            fprintf(stderr, "fg: no current job\n");
+            return 1;
+        }
+    } else {
+        // Найти задачу по ID
+        int job_id = atoi(args[1]);
+        job = job_list_find_by_id(list, job_id);
+        if(!job){
+            fprintf(stderr, "fg: job %d not found\n", job_id);
+            return 1;
+        }
+    }
+    
+    printf("%s\n", job->command_line);
+    
+    // Переместить задачу на передний план
+    if(job_foreground(job, 1) < 0){
+        return 1;
+    }
+    
+    return 0;
+}
+
+static int builtin_bg(char **args){
+    JobList *list = job_list_get();
+    Job *job = NULL;
+    
+    if(args[1] == NULL){
+        // Взять последнюю остановленную задачу
+        job = list->tail;
+        if(!job){
+            fprintf(stderr, "bg: no current job\n");
+            return 1;
+        }
+    } else {
+        // Найти задачу по ID
+        int job_id = atoi(args[1]);
+        job = job_list_find_by_id(list, job_id);
+        if(!job){
+            fprintf(stderr, "bg: job %d not found\n", job_id);
+            return 1;
+        }
+    }
+    
+    printf("[%d]+ %s &\n", job->job_id, job->command_line);
+    
+    // Продолжить задачу в фоне
+    if(job_background(job, 1) < 0){
+        return 1;
+    }
+    
+    return 0;
+}
+
+static int builtin_kill(char **args){
+    if(args[1] == NULL){
+        fprintf(stderr, "kill: usage: kill [job_id]\n");
+        return 1;
+    }
+    
+    JobList *list = job_list_get();
+    int job_id = atoi(args[1]);
+    Job *job = job_list_find_by_id(list, job_id);
+    
+    if(!job){
+        fprintf(stderr, "kill: job %d not found\n", job_id);
+        return 1;
+    }
+    
+    if(job_kill(job, SIGTERM) < 0){
+        return 1;
+    }
+    
+    printf("[%d]+ Terminated             %s\n", job->job_id, job->command_line);
+    
     return 0;
 }
