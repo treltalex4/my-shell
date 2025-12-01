@@ -125,7 +125,7 @@ static int builtin_cd(char **args){
 }
 
 static int builtin_pwd(char **args){
-    (void)args;  // Unused parameter
+    (void)args;
     char cwd[PATH_MAX_SIZE];
     if(!getcwd(cwd, sizeof(cwd))){
         perror("builtin_pwd: failed to get current directory");
@@ -154,11 +154,12 @@ static int builtin_exit(char **args){
 
     if(args[1] != NULL) code = atoi(args[1]);
 
+    job_control_cleanup();
     exit(code);
 }
 
 static int builtin_help(char **args){
-    (void)args;  // Unused parameter
+    (void)args;
     printf("Built-in commands:\n");
     printf("  cd [dir]       Change directory\n");
     printf("  pwd            Print current working directory\n");
@@ -173,7 +174,7 @@ static int builtin_help(char **args){
 }
 
 static int builtin_jobs(char **args){
-    (void)args;  // Unused parameter
+    (void)args;
     JobList *list = job_list_get();
     job_list_print(list);
     return 0;
@@ -184,14 +185,14 @@ static int builtin_fg(char **args){
     Job *job = NULL;
     
     if(args[1] == NULL){
-        // Взять последнюю задачу
+
         job = list->tail;
         if(!job){
             fprintf(stderr, "fg: no current job\n");
             return 1;
         }
     } else {
-        // Найти задачу по ID
+
         int job_id = atoi(args[1]);
         job = job_list_find_by_id(list, job_id);
         if(!job){
@@ -201,9 +202,21 @@ static int builtin_fg(char **args){
     }
     
     printf("%s\n", job->command_line);
+
+    // Если job остановлен, нужно отправить SIGCONT
+    int cont = (job->state == JOB_STOPPED);
     
-    // Переместить задачу на передний план
-    if(job_foreground(job, 1) < 0){
+    // Также проверяем процессы - если есть stopped, нужен cont
+    if(!cont){
+        for(Process *p = job->processes; p; p = p->next){
+            if(p->state == PROC_STOPPED){
+                cont = 1;
+                break;
+            }
+        }
+    }
+    
+    if(job_foreground(job, cont) < 0){
         return 1;
     }
     
@@ -215,14 +228,14 @@ static int builtin_bg(char **args){
     Job *job = NULL;
     
     if(args[1] == NULL){
-        // Взять последнюю остановленную задачу
+
         job = list->tail;
         if(!job){
             fprintf(stderr, "bg: no current job\n");
             return 1;
         }
     } else {
-        // Найти задачу по ID
+
         int job_id = atoi(args[1]);
         job = job_list_find_by_id(list, job_id);
         if(!job){
@@ -231,9 +244,13 @@ static int builtin_bg(char **args){
         }
     }
     
+    if(job->state != JOB_STOPPED){
+        fprintf(stderr, "bg: job %d is not stopped\n", job->job_id);
+        return 1;
+    }
+    
     printf("[%d]+ %s &\n", job->job_id, job->command_line);
     
-    // Продолжить задачу в фоне
     if(job_background(job, 1) < 0){
         return 1;
     }
@@ -243,12 +260,51 @@ static int builtin_bg(char **args){
 
 static int builtin_kill(char **args){
     if(args[1] == NULL){
-        fprintf(stderr, "kill: usage: kill [job_id]\n");
+        fprintf(stderr, "kill: usage: kill [-signal] [%%job_id]\n");
         return 1;
     }
     
+    int sig = SIGTERM;  // Сигнал по умолчанию
+    int arg_idx = 1;
+    
+    // Проверяем есть ли сигнал
+    if(args[1][0] == '-' && args[1][1] != '\0'){
+        const char *sig_str = args[1] + 1;
+        
+        // Поддержка именованных сигналов
+        if(strcmp(sig_str, "STOP") == 0) sig = SIGSTOP;
+        else if(strcmp(sig_str, "CONT") == 0) sig = SIGCONT;
+        else if(strcmp(sig_str, "TERM") == 0) sig = SIGTERM;
+        else if(strcmp(sig_str, "KILL") == 0) sig = SIGKILL;
+        else if(strcmp(sig_str, "INT") == 0) sig = SIGINT;
+        else if(strcmp(sig_str, "HUP") == 0) sig = SIGHUP;
+        else if(strcmp(sig_str, "QUIT") == 0) sig = SIGQUIT;
+        else if(strcmp(sig_str, "TSTP") == 0) sig = SIGTSTP;
+        // Поддержка числовых сигналов (-9, -15, и т.д.)
+        else {
+            sig = atoi(sig_str);
+            if(sig <= 0){
+                fprintf(stderr, "kill: invalid signal: %s\n", sig_str);
+                return 1;
+            }
+        }
+        
+        arg_idx = 2;
+        if(args[arg_idx] == NULL){
+            fprintf(stderr, "kill: usage: kill [-signal] [%%job_id]\n");
+            return 1;
+        }
+    }
+    
     JobList *list = job_list_get();
-    int job_id = atoi(args[1]);
+    int job_id;
+    
+    if(args[arg_idx][0] == '%'){
+        job_id = atoi(args[arg_idx] + 1);
+    } else {
+        job_id = atoi(args[arg_idx]);
+    }
+    
     Job *job = job_list_find_by_id(list, job_id);
     
     if(!job){
@@ -256,11 +312,26 @@ static int builtin_kill(char **args){
         return 1;
     }
     
-    if(job_kill(job, SIGTERM) < 0){
+    if(job_kill(job, sig) < 0){
         return 1;
     }
     
-    printf("[%d]+ Terminated             %s\n", job->job_id, job->command_line);
+    // Обновляем состояние job при определённых сигналах
+    if(sig == SIGSTOP || sig == SIGTSTP){
+        job->state = JOB_STOPPED;
+        for(Process *p = job->processes; p; p = p->next){
+            p->state = PROC_STOPPED;
+        }
+        printf("[%d]+ Stopped\t%s\n", job->job_id, job->command_line);
+    } else if(sig == SIGCONT){
+        job->state = JOB_BACKGROUND;
+        for(Process *p = job->processes; p; p = p->next){
+            if(p->state == PROC_STOPPED) p->state = PROC_RUNNING;
+        }
+        printf("[%d]+ %s &\n", job->job_id, job->command_line);
+    } else if(sig == SIGTERM || sig == SIGKILL){
+        printf("[%d]+ Terminated\t%s\n", job->job_id, job->command_line);
+    }
     
     return 0;
 }

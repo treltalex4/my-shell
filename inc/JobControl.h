@@ -65,6 +65,7 @@ int job_is_stopped(Job *job);
 void job_list_print(JobList *list);
 void job_print(Job *job);
 const char* job_state_to_string(JobState state);
+void job_notify_completed(JobList *list);
 
 int job_kill(Job *job, int signal);
 int job_foreground(Job *job, int cont);

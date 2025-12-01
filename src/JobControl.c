@@ -70,21 +70,38 @@ void job_control_setup_terminal(void) {
         return;
     }
     
+    // Игнорируем SIGTTOU чтобы tcsetpgrp не блокировал нас
+    signal(SIGTTOU, SIG_IGN);
+    
     g_shell_pgid = getpid();
     
-    if (setpgid(g_shell_pgid, g_shell_pgid) < 0) {
-        perror("setpgid");
-        exit(EXIT_FAILURE);
+    // Получаем текущую process group
+    g_shell_pgid = getpgrp();
+    
+    // Ждём пока shell станет foreground process group
+    // (важно если shell запущен из другого shell)
+    while (tcgetpgrp(g_terminal_fd) != g_shell_pgid) {
+        kill(-g_shell_pgid, SIGTTIN);
+        g_shell_pgid = getpgrp();
     }
     
+    // Пытаемся создать свою process group (0,0 = текущий процесс становится лидером)
+    // EPERM означает что мы уже session leader - это нормально
+    if (setpgid(0, 0) < 0 && errno != EPERM && errno != EACCES) {
+        // Не фатально - продолжаем
+    }
+    
+    g_shell_pgid = getpgrp();
+    
+    // Забираем терминал
     if (tcsetpgrp(g_terminal_fd, g_shell_pgid) < 0) {
         perror("tcsetpgrp");
-        exit(EXIT_FAILURE);
+        // Не фатально для работы shell
     }
     
+    // Сохраняем настройки терминала
     if (tcgetattr(g_terminal_fd, &g_shell_tmodes) < 0) {
         perror("tcgetattr");
-        exit(EXIT_FAILURE);
     }
 }
 
@@ -291,12 +308,16 @@ int job_is_stopped(Job *job){
         return -1;
     }
 
+    int has_stopped = 0;
     for(Process *p = job->processes; p; p = p->next){
         if(p->state == PROC_RUNNING){
-            return 0;
+            return 0;  // Есть работающий - не stopped
+        }
+        if(p->state == PROC_STOPPED){
+            has_stopped = 1;
         }
     }
-    return 1;
+    return has_stopped;  // stopped только если есть хотя бы один STOPPED
 }
 
 void job_list_print(JobList *list){
@@ -308,6 +329,11 @@ void job_list_print(JobList *list){
     Job *previous_job = current_job ? current_job->prev : NULL;
 
     for(Job *j = list->head; j; j = j->next){
+        // Пропускаем завершённые jobs - они выведутся через job_notify_completed
+        if(j->state == JOB_COMPLETED){
+            continue;
+        }
+        
         char marker = ' ';
         if(j == current_job){
             marker = '+';
@@ -351,6 +377,28 @@ void job_print(Job *job){
     printf("[%d]%c %s\t%s\n", job->job_id, marker, job_state_to_string(job->state), job->command_line);
 }
 
+void job_notify_completed(JobList *list){
+    if(!list){
+        return;
+    }
+    
+    Job *j = list->head;
+    while(j){
+        Job *next = j->next;
+        
+        if(j->state == JOB_COMPLETED && !j->notified){
+            // Выводим уведомление о завершении
+            job_print(j);
+            j->notified = 1;
+            
+            // Удаляем завершённый job из списка
+            job_list_remove(list, j);
+        }
+        
+        j = next;
+    }
+}
+
 int job_kill(Job *job, int signal){
     if(!job){
         return -1;
@@ -373,17 +421,51 @@ int job_foreground(Job *job, int cont){
 
     if(cont){
         kill(-job->pgid, SIGCONT);
+        // Обновляем состояние процессов - они теперь running
+        for(Process *p = job->processes; p; p = p->next){
+            if(p->state == PROC_STOPPED){
+                p->state = PROC_RUNNING;
+            }
+        }
     }
 
     int status;
+    pid_t pid;
     while(!job_is_completed(job) && !job_is_stopped(job)){
-        waitpid(-job->pgid, &status, WUNTRACED);
-        job_update_all(&g_job_list);
+        pid = waitpid(-job->pgid, &status, WUNTRACED);
+        if(pid > 0){
+            // Обновляем статус конкретного процесса
+            for(Process *p = job->processes; p; p = p->next){
+                if(p->pid == pid){
+                    if(WIFSTOPPED(status)){
+                        p->state = PROC_STOPPED;
+                        job->state = JOB_STOPPED;
+                    } else if(WIFEXITED(status) || WIFSIGNALED(status)){
+                        p->state = PROC_COMPLETED;
+                        p->exit_status = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+                    }
+                    break;
+                }
+            }
+        } else if(pid < 0 && errno == ECHILD){
+            break;  // Нет больше дочерних процессов
+        }
+    }
+    
+    // Обновляем состояние job если все процессы завершились
+    if(job_is_completed(job)){
+        job->state = JOB_COMPLETED;
     }
 
     if(g_is_interactive){
         tcsetpgrp(g_terminal_fd, g_shell_pgid);
         tcsetattr(g_terminal_fd, TCSADRAIN, &g_shell_tmodes);
+    }
+
+    // Выводим информацию если job был остановлен (Ctrl+Z)
+    if(job->state == JOB_STOPPED){
+        putchar('\n');  // Новая строка после ^Z
+        job_print(job);
     }
 
     return 0;

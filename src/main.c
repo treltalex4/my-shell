@@ -8,6 +8,7 @@
 #include "Parser.h"
 #include "Executor.h"
 #include "getline.h"
+#include "JobControl.h"
 
 
 static int has_unclosed_quotes(const char *str){
@@ -76,10 +77,19 @@ static char* read_command(void){
 }
 
 int main(){
+    job_control_init();
+    job_control_setup_terminal();
+    job_control_setup_signals();
+    
     Lexer lexer;
     Parser parser;
 
     for(;;){
+        // Обновляем статусы фоновых задач
+        job_update_all(job_list_get());
+        // Выводим уведомления о завершённых задачах
+        job_notify_completed(job_list_get());
+        
         char *line = read_command();
         if(!line){
             putchar('\n');
