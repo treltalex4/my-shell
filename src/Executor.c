@@ -302,7 +302,7 @@ static int execute_pipeline(ASTNode *root){
 }
 
 static int execute_redirect(ASTNode *root){
-    int file_fd, saved_fd = -1;
+    int file_fd, saved_fd = -1, saved_fd2 = -1;
 
     switch(root->data.redirect.type) {
     case REDIR_IN:
@@ -378,16 +378,18 @@ static int execute_redirect(ASTNode *root){
             return 1;
         }
 
-        saved_fd = dup(STDERR_FILENO);
-        if(saved_fd < 0){
+        saved_fd = dup(STDOUT_FILENO);
+        saved_fd2 = dup(STDERR_FILENO);
+        if(saved_fd < 0 || saved_fd2 < 0){
             perror("dup");
             close(file_fd);
             return 1;
         }
-        if(dup2(file_fd, STDERR_FILENO) < 0){
+        if(dup2(file_fd, STDOUT_FILENO) < 0 || dup2(file_fd, STDERR_FILENO) < 0){
             perror("dup2");
             close(file_fd);
             close(saved_fd);
+            close(saved_fd2);
             return 1;
         }
         close(file_fd);
@@ -400,16 +402,18 @@ static int execute_redirect(ASTNode *root){
             return 1;
         }
 
-        saved_fd = dup(STDERR_FILENO);
-        if(saved_fd < 0){
+        saved_fd = dup(STDOUT_FILENO);
+        saved_fd2 = dup(STDERR_FILENO);
+        if(saved_fd < 0 || saved_fd2 < 0){
             perror("dup");
             close(file_fd);
             return 1;
         }
-        if(dup2(file_fd, STDERR_FILENO) < 0){
+        if(dup2(file_fd, STDOUT_FILENO) < 0 || dup2(file_fd, STDERR_FILENO) < 0){
             perror("dup2");
             close(file_fd);
             close(saved_fd);
+            close(saved_fd2);
             return 1;
         }
         close(file_fd);
@@ -437,7 +441,11 @@ static int execute_redirect(ASTNode *root){
 
         case REDIR_ERR:
         case REDIR_ERR_APPEND:
-            restore_result = dup2(saved_fd, STDERR_FILENO);
+            restore_result = dup2(saved_fd, STDOUT_FILENO);
+            if(saved_fd2 >= 0){
+                dup2(saved_fd2, STDERR_FILENO);
+                close(saved_fd2);
+            }
             break;
         
         default:
