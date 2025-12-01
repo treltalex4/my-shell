@@ -11,6 +11,7 @@
 #include "Executor.h"
 #include "getline.h"
 #include "JobControl.h"
+#include "Expander.h"
 
 #define HOST_NAME_MAX 256
 #define USER_NAME_MAX 256
@@ -18,6 +19,7 @@
 
 static char g_username[USER_NAME_MAX];
 static char g_hostname[HOST_NAME_MAX];
+int g_last_exit_code = 0;
 
 static void init_prompt(void){
     struct passwd *pw = getpwuid(getuid());
@@ -40,20 +42,28 @@ static void print_prompt(void){
     
 }
 
-static int has_unclosed_quotes(const char *str){
+static int has_unclosed_syntax(const char *str){
     int single = 0;
     int double_q = 0;
+    int brace = 0;
     
     for(size_t i = 0; str[i] != '\0'; ++i){
         if(str[i] == '\'' && !double_q){
             single = !single;
         }
-        if(str[i] == '"' && !single){
+        else if(str[i] == '"' && !single){
             double_q = !double_q;
+        }
+        else if(str[i] == '$' && str[i+1] == '{' && !single){
+            brace++;
+            i++;
+        }
+        else if(str[i] == '}' && brace > 0 && !single){
+            brace--;
         }
     }
     
-    return single || double_q;
+    return single || double_q || brace;
 }
 
 static char* str_concat(char *s1, const char *s2){
@@ -83,7 +93,7 @@ static char* read_command(void){
         return NULL;
     }
     
-    while(has_unclosed_quotes(command)){
+    while(has_unclosed_syntax(command)){
         printf("> ");
         fflush(stdout);
         
@@ -115,9 +125,7 @@ int main(){
     Parser parser;
 
     for(;;){
-        // Обновляем статусы фоновых задач
         job_update_all(job_list_get());
-        // Выводим уведомления о завершённых задачах
         job_notify_completed(job_list_get());
         
         char *line = read_command();
@@ -141,11 +149,13 @@ int main(){
             continue;
         }
 
+        expander_expand(&tokens);
+
         parser_init(&parser, &tokens);
         ASTNode *tree = parser_parse(&parser);
         
         if(tree){
-            executor_execute(tree);
+            g_last_exit_code = executor_execute(tree);
             ast_free(tree);
         }
 
