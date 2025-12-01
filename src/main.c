@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pwd.h>
+#include <unistd.h>
 
 #include "Lexer.h"
 #include "Parser.h"
@@ -10,6 +12,33 @@
 #include "getline.h"
 #include "JobControl.h"
 
+#define HOST_NAME_MAX 256
+#define USER_NAME_MAX 256
+#define CWD_MAX_SIZE 256
+
+static char g_username[USER_NAME_MAX];
+static char g_hostname[HOST_NAME_MAX];
+
+static void init_prompt(void){
+    struct passwd *pw = getpwuid(getuid());
+    strncpy(g_username, pw ? pw->pw_name : "user", sizeof(g_username) - 1);
+    gethostname(g_hostname, sizeof(g_hostname));
+}
+
+static void print_prompt(void){
+    char cwd[CWD_MAX_SIZE];
+    getcwd(cwd, sizeof(cwd));
+    
+    char *home = getenv("HOME");
+    char short_cwd[CWD_MAX_SIZE];
+    
+    if(home && strncmp(cwd, home, strlen(home)) == 0){
+        snprintf(short_cwd, sizeof(short_cwd), "~%s", cwd + strlen(home));
+        printf("%s@%s:%s$ ", g_username, g_hostname, short_cwd);
+    } else printf("%s@%s:%s$ ", g_username, g_hostname, cwd);
+    
+    
+}
 
 static int has_unclosed_quotes(const char *str){
     int single = 0;
@@ -46,7 +75,7 @@ static char* str_concat(char *s1, const char *s2){
 }
 
 static char* read_command(void){
-    printf("mysh> ");
+    print_prompt();
     fflush(stdout);
     
     char *command = my_getline();
@@ -77,6 +106,7 @@ static char* read_command(void){
 }
 
 int main(){
+    init_prompt();
     job_control_init();
     job_control_setup_terminal();
     job_control_setup_signals();
