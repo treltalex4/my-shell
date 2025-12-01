@@ -1,4 +1,3 @@
-//Executor.c
 #include "Executor.h"
 #include "Builtins.h"
 #include "JobControl.h"
@@ -18,7 +17,6 @@ static int execute_and_or(ASTNode *root);
 static int execute_subshell(ASTNode *root);
 static char* ast_to_string(ASTNode *node);
 
-// Преобразует AST в строку команды (для job->command_line)
 static char* ast_to_string(ASTNode *node) {
     if (!node) return strdup("");
     
@@ -27,10 +25,8 @@ static char* ast_to_string(ASTNode *node) {
     
     switch (node->type) {
     case AST_COMMAND: {
-        // Считаем длину
         for (size_t i = 0; node->data.command.args[i]; i++) {
-            len += strlen(node->data.command.args[i]) + 1; // +1 для пробела
-        }
+            len += strlen(node->data.command.args[i]) + 1;        }
         result = malloc(len + 1);
         if (!result) return strdup("???");
         result[0] = '\0';
@@ -45,8 +41,7 @@ static char* ast_to_string(ASTNode *node) {
     case AST_PIPELINE_ERR: {
         char *left = ast_to_string(node->data.binary.left);
         char *right = ast_to_string(node->data.binary.right);
-        len = strlen(left) + strlen(right) + 4; // " | "
-        result = malloc(len + 1);
+        len = strlen(left) + strlen(right) + 4;        result = malloc(len + 1);
         if (!result) { free(left); free(right); return strdup("???"); }
         sprintf(result, "%s | %s", left, right);
         free(left); free(right);
@@ -54,8 +49,7 @@ static char* ast_to_string(ASTNode *node) {
     }
     case AST_SUBSHELL: {
         char *inner = ast_to_string(node->data.subshell);
-        len = strlen(inner) + 3; // "( )"
-        result = malloc(len + 1);
+        len = strlen(inner) + 3;        result = malloc(len + 1);
         if (!result) { free(inner); return strdup("???"); }
         sprintf(result, "(%s)", inner);
         free(inner);
@@ -81,8 +75,7 @@ static char* ast_to_string(ASTNode *node) {
     case AST_SEQUENCE: {
         char *left = ast_to_string(node->data.binary.left);
         char *right = ast_to_string(node->data.binary.right);
-        len = strlen(left) + strlen(right) + 3; // "; "
-        result = malloc(len + 1);
+        len = strlen(left) + strlen(right) + 3;        result = malloc(len + 1);
         if (!result) { free(left); free(right); return strdup("???"); }
         sprintf(result, "%s; %s", left, right);
         free(left); free(right);
@@ -91,8 +84,7 @@ static char* ast_to_string(ASTNode *node) {
     case AST_AND: {
         char *left = ast_to_string(node->data.binary.left);
         char *right = ast_to_string(node->data.binary.right);
-        len = strlen(left) + strlen(right) + 5; // " && "
-        result = malloc(len + 1);
+        len = strlen(left) + strlen(right) + 5;        result = malloc(len + 1);
         if (!result) { free(left); free(right); return strdup("???"); }
         sprintf(result, "%s && %s", left, right);
         free(left); free(right);
@@ -101,8 +93,7 @@ static char* ast_to_string(ASTNode *node) {
     case AST_OR: {
         char *left = ast_to_string(node->data.binary.left);
         char *right = ast_to_string(node->data.binary.right);
-        len = strlen(left) + strlen(right) + 5; // " || "
-        result = malloc(len + 1);
+        len = strlen(left) + strlen(right) + 5;        result = malloc(len + 1);
         if (!result) { free(left); free(right); return strdup("???"); }
         sprintf(result, "%s || %s", left, right);
         free(left); free(right);
@@ -150,10 +141,8 @@ int executor_execute(ASTNode *root){
             }
             
             if(pid == 0){
-                // Child: создаём новую process group
                 setpgid(0, 0);
                 
-                // Сбрасываем обработчики сигналов на default
                 signal(SIGINT, SIG_DFL);
                 signal(SIGQUIT, SIG_DFL);
                 signal(SIGTSTP, SIG_DFL);
@@ -165,13 +154,10 @@ int executor_execute(ASTNode *root){
                 exit(code);
             }
             
-            // Parent: устанавливаем pgid (race condition prevention)
             setpgid(pid, pid);
             
-            // Получаем строку команды из AST
             char *cmd_str = ast_to_string(root->data.subshell);
             
-            // Создаём job и добавляем в список
             Job *job = job_create(pid, cmd_str, JOB_BACKGROUND);
             if(job){
                 job_add_process(job, pid, cmd_str);
@@ -228,8 +214,6 @@ static int execute_command(ASTNode *root){
     return 1;
 }
 
-// Вспомогательная функция: собирает команды pipeline в массив
-// Также собирает флаги |& для каждого соединения
 static int collect_pipeline_commands(ASTNode *root, ASTNode **commands, int *pipe_stderr, int max_commands) {
     int count = 0;
     ASTNode *current = root;
@@ -252,12 +236,10 @@ static int collect_pipeline_commands(ASTNode *root, ASTNode **commands, int *pip
     return count;
 }
 
-// Выполняет команду напрямую (для использования в pipeline child)
 static void execute_pipeline_command(ASTNode *node) {
     if (node->type == AST_COMMAND) {
         char **args = node->data.command.args;
         if (args && args[0]) {
-            // Проверяем builtin - некоторые должны работать в pipeline
             if (is_builtin(args[0])) {
                 int code = execute_builtin(args);
                 exit(code);
@@ -268,33 +250,27 @@ static void execute_pipeline_command(ASTNode *node) {
         }
         exit(0);
     } else {
-        // Для сложных узлов (redirect, subshell) - рекурсия
         int code = executor_execute(node);
         exit(code);
     }
 }
 
 static int execute_pipeline(ASTNode *root) {
-    // Максимум 64 команды в pipeline
     ASTNode *commands[64];
-    int pipe_stderr[64] = {0};  // флаг |& для каждого pipe
-    
+    int pipe_stderr[64] = {0};    
     int cmd_count = collect_pipeline_commands(root, commands, pipe_stderr, 64);
     if (cmd_count < 0) {
         return 1;
     }
     
-    // Для одной команды - просто выполняем
     if (cmd_count == 1) {
         return executor_execute(commands[0]);
     }
     
-    // Создаём все pipe'ы заранее
     int pipes[cmd_count - 1][2];
     for (int i = 0; i < cmd_count - 1; i++) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe");
-            // Закрываем уже созданные pipe'ы
             for (int j = 0; j < i; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
@@ -303,14 +279,12 @@ static int execute_pipeline(ASTNode *root) {
         }
     }
     
-    // Fork для каждой команды
     pid_t pids[cmd_count];
     for (int i = 0; i < cmd_count; i++) {
         pids[i] = fork();
         
         if (pids[i] < 0) {
             perror("fork");
-            // Закрываем все pipe'ы
             for (int j = 0; j < cmd_count - 1; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
@@ -319,9 +293,7 @@ static int execute_pipeline(ASTNode *root) {
         }
         
         if (pids[i] == 0) {
-            // Child: настроить stdin/stdout
             
-            // stdin из предыдущего pipe (если не первая команда)
             if (i > 0) {
                 if (dup2(pipes[i-1][0], STDIN_FILENO) < 0) {
                     perror("dup2");
@@ -329,13 +301,11 @@ static int execute_pipeline(ASTNode *root) {
                 }
             }
             
-            // stdout в следующий pipe (если не последняя команда)
             if (i < cmd_count - 1) {
                 if (dup2(pipes[i][1], STDOUT_FILENO) < 0) {
                     perror("dup2");
                     exit(1);
                 }
-                // Если |& - также перенаправляем stderr
                 if (pipe_stderr[i]) {
                     if (dup2(pipes[i][1], STDERR_FILENO) < 0) {
                         perror("dup2");
@@ -344,26 +314,21 @@ static int execute_pipeline(ASTNode *root) {
                 }
             }
             
-            // Закрыть все pipe fd в child
             for (int j = 0; j < cmd_count - 1; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
             }
             
-            // Выполнить команду
             execute_pipeline_command(commands[i]);
-            // Не должны сюда дойти
             exit(1);
         }
     }
     
-    // Parent: закрыть все pipe'ы
     for (int i = 0; i < cmd_count - 1; i++) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
     
-    // Ждать все процессы
     int last_status = 0;
     for (int i = 0; i < cmd_count; i++) {
         int status;
