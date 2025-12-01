@@ -228,77 +228,156 @@ static int execute_command(ASTNode *root){
     return 1;
 }
 
-static int execute_pipeline(ASTNode *root){
-    int fd[2];
-    if(pipe(fd) < 0){
-        perror("pipe");
+// Вспомогательная функция: собирает команды pipeline в массив
+// Также собирает флаги |& для каждого соединения
+static int collect_pipeline_commands(ASTNode *root, ASTNode **commands, int *pipe_stderr, int max_commands) {
+    int count = 0;
+    ASTNode *current = root;
+    
+    while (current && (current->type == AST_PIPELINE || current->type == AST_PIPELINE_ERR)) {
+        if (count >= max_commands - 1) {
+            fprintf(stderr, "pipeline: too many commands\n");
+            return -1;
+        }
+        commands[count] = current->data.binary.left;
+        pipe_stderr[count] = (current->type == AST_PIPELINE_ERR);
+        count++;
+        current = current->data.binary.right;
+    }
+    
+    if (current) {
+        commands[count++] = current;
+    }
+    
+    return count;
+}
+
+// Выполняет команду напрямую (для использования в pipeline child)
+static void execute_pipeline_command(ASTNode *node) {
+    if (node->type == AST_COMMAND) {
+        char **args = node->data.command.args;
+        if (args && args[0]) {
+            // Проверяем builtin - некоторые должны работать в pipeline
+            if (is_builtin(args[0])) {
+                int code = execute_builtin(args);
+                exit(code);
+            }
+            execvp(args[0], args);
+            perror(args[0]);
+            exit(127);
+        }
+        exit(0);
+    } else {
+        // Для сложных узлов (redirect, subshell) - рекурсия
+        int code = executor_execute(node);
+        exit(code);
+    }
+}
+
+static int execute_pipeline(ASTNode *root) {
+    // Максимум 64 команды в pipeline
+    ASTNode *commands[64];
+    int pipe_stderr[64] = {0};  // флаг |& для каждого pipe
+    
+    int cmd_count = collect_pipeline_commands(root, commands, pipe_stderr, 64);
+    if (cmd_count < 0) {
         return 1;
     }
-
-    pid_t pid_left = fork();
-
-    if(pid_left < 0){
-        perror("fork");
-        close(fd[0]);
-        close(fd[1]);
-        return 1;
+    
+    // Для одной команды - просто выполняем
+    if (cmd_count == 1) {
+        return executor_execute(commands[0]);
     }
-
-    if(pid_left == 0){
-        close(fd[0]);
-
-        if(dup2(fd[1], STDOUT_FILENO) < 0){
-            perror("dup2");
+    
+    // Создаём все pipe'ы заранее
+    int pipes[cmd_count - 1][2];
+    for (int i = 0; i < cmd_count - 1; i++) {
+        if (pipe(pipes[i]) < 0) {
+            perror("pipe");
+            // Закрываем уже созданные pipe'ы
+            for (int j = 0; j < i; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            return 1;
+        }
+    }
+    
+    // Fork для каждой команды
+    pid_t pids[cmd_count];
+    for (int i = 0; i < cmd_count; i++) {
+        pids[i] = fork();
+        
+        if (pids[i] < 0) {
+            perror("fork");
+            // Закрываем все pipe'ы
+            for (int j = 0; j < cmd_count - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            return 1;
+        }
+        
+        if (pids[i] == 0) {
+            // Child: настроить stdin/stdout
+            
+            // stdin из предыдущего pipe (если не первая команда)
+            if (i > 0) {
+                if (dup2(pipes[i-1][0], STDIN_FILENO) < 0) {
+                    perror("dup2");
+                    exit(1);
+                }
+            }
+            
+            // stdout в следующий pipe (если не последняя команда)
+            if (i < cmd_count - 1) {
+                if (dup2(pipes[i][1], STDOUT_FILENO) < 0) {
+                    perror("dup2");
+                    exit(1);
+                }
+                // Если |& - также перенаправляем stderr
+                if (pipe_stderr[i]) {
+                    if (dup2(pipes[i][1], STDERR_FILENO) < 0) {
+                        perror("dup2");
+                        exit(1);
+                    }
+                }
+            }
+            
+            // Закрыть все pipe fd в child
+            for (int j = 0; j < cmd_count - 1; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            
+            // Выполнить команду
+            execute_pipeline_command(commands[i]);
+            // Не должны сюда дойти
             exit(1);
         }
-
-        if(root->type == AST_PIPELINE_ERR){
-            if(dup2(fd[1], STDERR_FILENO) < 0){
-                perror("dup2");
-                exit(1);
+    }
+    
+    // Parent: закрыть все pipe'ы
+    for (int i = 0; i < cmd_count - 1; i++) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+    
+    // Ждать все процессы
+    int last_status = 0;
+    for (int i = 0; i < cmd_count; i++) {
+        int status;
+        waitpid(pids[i], &status, 0);
+        if (i == cmd_count - 1) {
+            if (WIFEXITED(status)) {
+                last_status = WEXITSTATUS(status);
+            } else {
+                last_status = 1;
             }
         }
-
-        close(fd[1]);
-
-        int code = executor_execute(root->data.binary.left);
-        exit(code);
     }
-
-    pid_t pid_right = fork();
-    if(pid_right < 0){
-        perror("fork");
-        close(fd[0]);
-        close(fd[1]);
-        return 1;
-    }
-
-    if(pid_right == 0){
-        close(fd[1]);
-
-        if(dup2(fd[0], STDIN_FILENO) < 0){
-            perror("dup2");
-            exit(1);
-        }
-
-        close(fd[0]);
-
-        int code = executor_execute(root->data.binary.right);
-        exit(code);
-    }
-
-    close(fd[0]);
-    close(fd[1]);
-
-    int status_left, status_right;
-    waitpid(pid_left, &status_left, 0);
-    waitpid(pid_right, &status_right, 0);
-
-    if (WIFEXITED(status_right)) {
-        return WEXITSTATUS(status_right);
-    }
-
-    return 1;
+    
+    return last_status;
 }
 
 static int execute_redirect(ASTNode *root){
