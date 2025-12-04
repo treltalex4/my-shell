@@ -9,6 +9,8 @@
 #include <signal.h>
 
 #define PATH_MAX_SIZE 1024
+#define ENV_MAX_NAME 128
+#define ENV_MAX_VAL 256
 
 static int builtin_cd(char **args);
 static int builtin_pwd(char **args);
@@ -19,6 +21,8 @@ static int builtin_jobs(char **args);
 static int builtin_fg(char **args);
 static int builtin_bg(char **args);
 static int builtin_kill(char **args);
+static int builtin_set(char **args);
+static int builtin_unset(char **args);
 
 int is_builtin(const char *command) {
     static const char *builtins[] = {
@@ -31,6 +35,8 @@ int is_builtin(const char *command) {
         "fg",
         "bg",
         "kill",
+        "set",
+        "unset",
         NULL
     };
     
@@ -69,6 +75,12 @@ int execute_builtin(char **args){
     }
     else if(strcmp(args[0], "kill") == 0){
         return builtin_kill(args);
+    }
+    else if(strcmp(args[0], "set") == 0){
+        return builtin_set(args);
+    }
+    else if(strcmp(args[0], "unset") == 0){
+        return builtin_unset(args);
     }
 
     fprintf(stderr, "%s: builtin not found\n", args[0]);
@@ -203,10 +215,8 @@ static int builtin_fg(char **args){
     
     printf("%s\n", job->command_line);
 
-    // Если job остановлен, нужно отправить SIGCONT
     int cont = (job->state == JOB_STOPPED);
     
-    // Также проверяем процессы - если есть stopped, нужен cont
     if(!cont){
         for(Process *p = job->processes; p; p = p->next){
             if(p->state == PROC_STOPPED){
@@ -264,14 +274,11 @@ static int builtin_kill(char **args){
         return 1;
     }
     
-    int sig = SIGTERM;  // Сигнал по умолчанию
-    int arg_idx = 1;
+    int sig = SIGTERM;    int arg_idx = 1;
     
-    // Проверяем есть ли сигнал
     if(args[1][0] == '-' && args[1][1] != '\0'){
         const char *sig_str = args[1] + 1;
         
-        // Поддержка именованных сигналов
         if(strcmp(sig_str, "STOP") == 0) sig = SIGSTOP;
         else if(strcmp(sig_str, "CONT") == 0) sig = SIGCONT;
         else if(strcmp(sig_str, "TERM") == 0) sig = SIGTERM;
@@ -280,7 +287,6 @@ static int builtin_kill(char **args){
         else if(strcmp(sig_str, "HUP") == 0) sig = SIGHUP;
         else if(strcmp(sig_str, "QUIT") == 0) sig = SIGQUIT;
         else if(strcmp(sig_str, "TSTP") == 0) sig = SIGTSTP;
-        // Поддержка числовых сигналов (-9, -15, и т.д.)
         else {
             sig = atoi(sig_str);
             if(sig <= 0){
@@ -316,7 +322,6 @@ static int builtin_kill(char **args){
         return 1;
     }
     
-    // Обновляем состояние job при определённых сигналах
     if(sig == SIGSTOP || sig == SIGTSTP){
         job->state = JOB_STOPPED;
         for(Process *p = job->processes; p; p = p->next){
@@ -333,5 +338,51 @@ static int builtin_kill(char **args){
         printf("[%d]+ Terminated\t%s\n", job->job_id, job->command_line);
     }
     
+    return 0;
+}
+
+static int builtin_set(char **args){
+    if(args[1] == NULL){
+        extern char **environ;
+        for(char **env = environ; *env != NULL; env++){
+            printf("%s\n", *env);
+        }
+        return 0;
+    }
+
+    char *arg = args[1];
+    char *eq = strchr(arg, '=');
+
+    if(eq == NULL){
+        fprintf(stderr, "set: incorrect format\n");
+        return 1;
+    }
+
+    *eq = '\0';
+    char *name = arg;
+    char *value = eq + 1;
+
+    if(setenv(name, value, 1) != 0){
+        perror("setenv");
+        *eq = '=';
+        return 1;
+    }
+    *eq = '=';
+
+    return 0;
+    
+}
+
+static int builtin_unset(char **args){
+    if(args[1] == NULL){
+        fprintf(stderr, "unset: not enough arguments\n");
+        return 1;
+    }
+
+    if(unsetenv(args[1]) != 0){
+        perror("unset");
+        return 1;
+    }
+
     return 0;
 }

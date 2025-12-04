@@ -5,11 +5,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #define DEFAULT_BUF_SIZE 256
 #define VAR_NAME_SIZE 256
 
 extern int g_last_exit_code;
+extern pid_t g_last_bg_pid;
 
 static char *get_variable(const char *name);
 static char *expand_string(const char *str);
@@ -36,6 +38,18 @@ static char *get_variable(const char *name){
     if(strcmp(name, "?") == 0){
         char *buf = malloc(16);
         snprintf(buf, 16, "%d", g_last_exit_code);
+        return buf;
+    }
+
+    if(strcmp(name, "$") == 0){
+        char *buf = malloc(16);
+        snprintf(buf, 16, "%d", getpid());
+        return buf;
+    }
+
+    if(strcmp(name, "!") == 0){
+        char *buf = malloc(16);
+        snprintf(buf, 16, "%d", g_last_bg_pid);
         return buf;
     }
 
@@ -99,6 +113,16 @@ static char *expand_string(const char *str){
             }
             else if(str[i] == '?'){
                 var_name[0] = '?';
+                var_name[1] = '\0';
+                i++;
+            }
+            else if(str[i] == '$'){
+                var_name[0] = '$';
+                var_name[1] = '\0';
+                i++;
+            }
+            else if(str[i] == '!'){
+                var_name[0] = '!';
                 var_name[1] = '\0';
                 i++;
             } 

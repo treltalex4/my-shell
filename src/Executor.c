@@ -156,6 +156,9 @@ int executor_execute(ASTNode *root){
             
             setpgid(pid, pid);
             
+            extern pid_t g_last_bg_pid;
+            g_last_bg_pid = pid;
+            
             char *cmd_str = ast_to_string(root->data.subshell);
             
             Job *job = job_create(pid, cmd_str, JOB_BACKGROUND);

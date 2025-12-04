@@ -20,6 +20,7 @@
 static char g_username[USER_NAME_MAX];
 static char g_hostname[HOST_NAME_MAX];
 int g_last_exit_code = 0;
+pid_t g_last_bg_pid = 0;
 
 static void init_prompt(void){
     struct passwd *pw = getpwuid(getuid());
@@ -46,6 +47,7 @@ static int has_unclosed_syntax(const char *str){
     int single = 0;
     int double_q = 0;
     int brace = 0;
+    size_t len = strlen(str);
     
     for(size_t i = 0; str[i] != '\0'; ++i){
         if(str[i] == '\'' && !double_q){
@@ -62,8 +64,16 @@ static int has_unclosed_syntax(const char *str){
             brace--;
         }
     }
-    
-    return single || double_q || brace;
+
+    int backslash_continue = 0;
+    if(len > 0 && str[len - 1] == '\\'){
+        backslash_continue = 1;
+    }
+    if(len > 1 && str[len - 2] == '\\' && str[len - 1] == '\n'){
+        backslash_continue = 1;
+    }
+
+    return single || double_q || brace || backslash_continue;
 }
 
 static char* str_concat(char *s1, const char *s2){
@@ -101,6 +111,14 @@ static char* read_command(void){
         if(!next_line){
             free(command);
             return NULL;
+        }
+        
+        size_t cmd_len = strlen(command);
+        if(cmd_len > 0 && command[cmd_len - 1] == '\\'){
+            command[cmd_len - 1] = '\0';
+        }
+        else if(cmd_len > 1 && command[cmd_len - 2] == '\\' && command[cmd_len - 1] == '\n'){
+            command[cmd_len - 2] = '\0';
         }
         
         command = str_concat(command, next_line);
