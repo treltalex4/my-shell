@@ -71,7 +71,6 @@ int job_kill(Job *job, int signal);
 int job_foreground(Job *job, int cont);
 int job_background(Job *job, int cont);
 
-//pid_t job_control_get_shell_pgid(void);
 int job_control_get_terminal_fd(void);
 int job_control_is_interactive(void);
 

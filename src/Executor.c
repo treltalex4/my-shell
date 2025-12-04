@@ -1,3 +1,4 @@
+//Executor.c
 #include "Executor.h"
 #include "Builtins.h"
 #include "JobControl.h"
@@ -201,6 +202,12 @@ static int execute_command(ASTNode *root){
     }
 
     if(pid == 0){
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+        signal(SIGQUIT, SIG_DFL);
+        signal(SIGTTIN, SIG_DFL);
+        signal(SIGTTOU, SIG_DFL);
+        
         execvp(args[0], args);
 
         perror(args[0]);
@@ -296,6 +303,11 @@ static int execute_pipeline(ASTNode *root) {
         }
         
         if (pids[i] == 0) {
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+            signal(SIGQUIT, SIG_DFL);
+            signal(SIGTTIN, SIG_DFL);
+            signal(SIGTTOU, SIG_DFL);
             
             if (i > 0) {
                 if (dup2(pipes[i-1][0], STDIN_FILENO) < 0) {
@@ -537,6 +549,12 @@ static int execute_subshell(ASTNode *root){
     }
     
     if(pid == 0){
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+        signal(SIGQUIT, SIG_DFL);
+        signal(SIGTTIN, SIG_DFL);
+        signal(SIGTTOU, SIG_DFL);
+        
         int code = executor_execute(root->data.subshell);
         exit(code);
     }

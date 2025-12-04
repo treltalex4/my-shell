@@ -62,3 +62,6 @@ main
 
 # VSCode
 .vscode/
+
+#line-editing
+line-editing.c
