@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
+//main.c
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,113 +28,37 @@ static void init_prompt(void){
     gethostname(g_hostname, sizeof(g_hostname));
 }
 
+#define COLOR_RESET   "\x1b[0m"
+#define COLOR_BOLD  "\x1b[1m"
+#define COLOR_GREEN "\x1b[32m"
+#define COLOR_BLUE  "\x1b[34m"
+#define COLOR_CYAN  "\x1b[36m"
+#define COLOR_YELLOW    "\x1b[33m"
+#define COLOR_MAGENTA   "\x1b[35m"
+
 static void print_prompt(void){
     char cwd[CWD_MAX_SIZE];
     getcwd(cwd, sizeof(cwd));
     
     char *home = getenv("HOME");
     char short_cwd[CWD_MAX_SIZE];
+    char *display_cwd = cwd;
     
     if(home && strncmp(cwd, home, strlen(home)) == 0){
         snprintf(short_cwd, sizeof(short_cwd), "~%s", cwd + strlen(home));
-        printf("%s@%s:%s$ ", g_username, g_hostname, short_cwd);
-    } else printf("%s@%s:%s$ ", g_username, g_hostname, cwd);
-    
-    
-}
-
-static int has_unclosed_syntax(const char *str){
-    int single = 0;
-    int double_q = 0;
-    int brace = 0;
-    size_t len = strlen(str);
-    
-    for(size_t i = 0; str[i] != '\0'; ++i){
-        if(str[i] == '\'' && !double_q){
-            single = !single;
-        }
-        else if(str[i] == '"' && !single){
-            double_q = !double_q;
-        }
-        else if(str[i] == '$' && str[i+1] == '{' && !single){
-            brace++;
-            i++;
-        }
-        else if(str[i] == '}' && brace > 0 && !single){
-            brace--;
-        }
-    }
-
-    int backslash_continue = 0;
-    if(len > 0 && str[len - 1] == '\\'){
-        backslash_continue = 1;
-    }
-    if(len > 1 && str[len - 2] == '\\' && str[len - 1] == '\n'){
-        backslash_continue = 1;
-    }
-
-    return single || double_q || brace || backslash_continue;
-}
-
-static char* str_concat(char *s1, const char *s2){
-    if(!s2) return s1;
-    if(!s1) return strdup(s2);
-    
-    size_t len1 = strlen(s1);
-    size_t len2 = strlen(s2);
-    
-    char *result = realloc(s1, len1 + len2 + 1);
-    if(!result){
-        perror("str_concat: realloc failed");
-        free(s1);
-        return NULL;
+        display_cwd = short_cwd;
     }
     
-    memcpy(result + len1, s2, len2 + 1);
-    return result;
-}
-
-static char* read_command(void){
-    print_prompt();
+    printf(COLOR_BOLD COLOR_GREEN "%s@%s" COLOR_RESET ":" 
+           COLOR_BOLD COLOR_BLUE "%s" COLOR_RESET "$ ", 
+           g_username, g_hostname, display_cwd);
+    
     fflush(stdout);
-    
-    char *command = my_getline();
-    if(!command){
-        return NULL;
-    }
-    
-    while(has_unclosed_syntax(command)){
-        printf("> ");
-        fflush(stdout);
-        
-        char *next_line = my_getline();
-        if(!next_line){
-            free(command);
-            return NULL;
-        }
-        
-        size_t cmd_len = strlen(command);
-        if(cmd_len > 0 && command[cmd_len - 1] == '\\'){
-            command[cmd_len - 1] = '\0';
-        }
-        else if(cmd_len > 1 && command[cmd_len - 2] == '\\' && command[cmd_len - 1] == '\n'){
-            command[cmd_len - 2] = '\0';
-        }
-        
-        command = str_concat(command, next_line);
-        free(next_line);
-        
-        if(!command){
-            fprintf(stderr, "Error: failed to concatenate command lines\n");
-            return NULL;
-        }
-    }
-    
-    return command;
 }
 
 int main(){
     init_prompt();
+    terminal_init();
     job_control_init();
     job_control_setup_terminal();
     job_control_setup_signals();
@@ -146,7 +70,14 @@ int main(){
         job_update_all(job_list_get());
         job_notify_completed(job_list_get());
         
-        char *line = read_command();
+        print_prompt();
+        
+
+        terminal_enable_raw_mode();
+        char *line = read_full_command();
+
+        terminal_disable_raw_mode();
+        
         if(!line){
             putchar('\n');
             break;
@@ -155,6 +86,12 @@ int main(){
         size_t len = strlen(line);
         if(len > 0 && line[len - 1] == '\n'){
             line[len - 1] = '\0';
+        }
+
+
+        if(line[0] == '\0'){
+            free(line);
+            continue;
         }
 
         lexer_init(&lexer, line);
