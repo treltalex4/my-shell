@@ -49,8 +49,8 @@ static void print_prompt(void){
         display_cwd = short_cwd;
     }
     
-    printf(COLOR_BOLD COLOR_GREEN "%s@%s" COLOR_RESET ":" 
-           COLOR_BOLD COLOR_BLUE "%s" COLOR_RESET "$ ", 
+    printf(COLOR_BOLD COLOR_YELLOW "%s@%s" COLOR_RESET ":" 
+           COLOR_BOLD COLOR_MAGENTA "%s" COLOR_RESET "$ ", 
            g_username, g_hostname, display_cwd);
     
     fflush(stdout);
