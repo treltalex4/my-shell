@@ -23,6 +23,8 @@ static int builtin_bg(char **args);
 static int builtin_kill(char **args);
 static int builtin_set(char **args);
 static int builtin_unset(char **args);
+static int builtin_unset(char **args);
+static int builtin_ls(char **args);
 
 int is_builtin(const char *command) {
     static const char *builtins[] = {
@@ -37,6 +39,7 @@ int is_builtin(const char *command) {
         "kill",
         "set",
         "unset",
+        "ls",
         NULL
     };
     
@@ -81,6 +84,9 @@ int execute_builtin(char **args){
     }
     else if(strcmp(args[0], "unset") == 0){
         return builtin_unset(args);
+    }
+    else if(strcmp(args[0], "ls") == 0){
+        return builtin_ls(args);
     }
 
     fprintf(stderr, "%s: builtin not found\n", args[0]);
@@ -385,4 +391,9 @@ static int builtin_unset(char **args){
     }
 
     return 0;
+}
+
+static int builtin_ls(char **args){
+    (void)args;
+    return system("ls --color=auto");
 }
