@@ -147,9 +147,22 @@ int executor_execute(ASTNode *root){
                 signal(SIGINT, SIG_DFL);
                 signal(SIGQUIT, SIG_DFL);
                 signal(SIGTSTP, SIG_DFL);
-                signal(SIGTTIN, SIG_DFL);
-                signal(SIGTTOU, SIG_DFL);
+                signal(SIGTTIN, SIG_IGN);
+                signal(SIGTTOU, SIG_IGN);
                 signal(SIGCHLD, SIG_DFL);
+                
+                // Для простой команды сразу вызываем execvp
+                if(root->data.subshell && root->data.subshell->type == AST_COMMAND){
+                    char **args = root->data.subshell->data.command.args;
+                    if(args && args[0]){
+                        if(is_builtin(args[0])){
+                            exit(execute_builtin(args));
+                        }
+                        execvp(args[0], args);
+                        perror(args[0]);
+                        exit(127);
+                    }
+                }
                 
                 int code = executor_execute(root->data.subshell);
                 exit(code);
@@ -202,6 +215,7 @@ static int execute_command(ASTNode *root){
     }
 
     if(pid == 0){
+        setpgid(0, 0);
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
@@ -214,11 +228,28 @@ static int execute_command(ASTNode *root){
         exit(127);
     }
 
+    setpgid(pid, pid);
+    tcsetpgrp(STDIN_FILENO, pid);
+    
     int status;
-    wait(&status);
+    waitpid(pid, &status, WUNTRACED);
+    
+    tcsetpgrp(STDIN_FILENO, getpgrp());
 
     if(WIFEXITED(status)){
         return WEXITSTATUS(status);
+    }
+    
+    if(WIFSTOPPED(status)){
+        char *cmd_str = ast_to_string(root);
+        Job *job = job_create(pid, cmd_str, JOB_STOPPED);
+        if(job){
+            job_add_process(job, pid, cmd_str);
+            job_list_add(job_list_get(), job);
+            printf("\n[%d] Stopped   %s\n", job->job_id, cmd_str);
+        }
+        free(cmd_str);
+        return 0;
     }
 
     return 1;
@@ -303,6 +334,7 @@ static int execute_pipeline(ASTNode *root) {
         }
         
         if (pids[i] == 0) {
+            setpgid(0, pids[0] == 0 ? 0 : pids[0]);
             signal(SIGINT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
             signal(SIGQUIT, SIG_DFL);
@@ -344,10 +376,16 @@ static int execute_pipeline(ASTNode *root) {
         close(pipes[i][1]);
     }
     
+    for (int i = 0; i < cmd_count; i++) {
+        setpgid(pids[i], pids[0]);
+    }
+    
+    tcsetpgrp(STDIN_FILENO, pids[0]);
+    
     int last_status = 0;
     for (int i = 0; i < cmd_count; i++) {
         int status;
-        waitpid(pids[i], &status, 0);
+        waitpid(pids[i], &status, WUNTRACED);
         if (i == cmd_count - 1) {
             if (WIFEXITED(status)) {
                 last_status = WEXITSTATUS(status);
@@ -356,6 +394,8 @@ static int execute_pipeline(ASTNode *root) {
             }
         }
     }
+    
+    tcsetpgrp(STDIN_FILENO, getpgrp());
     
     return last_status;
 }
@@ -549,6 +589,7 @@ static int execute_subshell(ASTNode *root){
     }
     
     if(pid == 0){
+        setpgid(0, 0);
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
@@ -559,11 +600,28 @@ static int execute_subshell(ASTNode *root){
         exit(code);
     }
     
+    setpgid(pid, pid);
+    tcsetpgrp(STDIN_FILENO, pid);
+    
     int status;
-    waitpid(pid, &status, 0);
+    waitpid(pid, &status, WUNTRACED);
+    
+    tcsetpgrp(STDIN_FILENO, getpgrp());
     
     if(WIFEXITED(status)){
         return WEXITSTATUS(status);
+    }
+    
+    if(WIFSTOPPED(status)){
+        char *cmd_str = ast_to_string(root);
+        Job *job = job_create(pid, cmd_str, JOB_STOPPED);
+        if(job){
+            job_add_process(job, pid, cmd_str);
+            job_list_add(job_list_get(), job);
+            printf("\n[%d] Stopped   %s\n", job->job_id, cmd_str);
+        }
+        free(cmd_str);
+        return 0;
     }
     
     return 1;
