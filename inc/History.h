@@ -3,7 +3,7 @@
 
 #define HISTORY_FILE ".myshell_history"
 #define MAX_HISTORY 500
-#define PATH_MAX_SIZE 256
+#define MAX_PATH_SIZE 256
 #define LINE_MAX_SIZE 1024
 
 typedef struct {

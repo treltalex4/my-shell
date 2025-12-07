@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <signal.h>
 
+static int g_in_background = 0;
+
 static int execute_command(ASTNode *root);
 static int execute_pipeline(ASTNode *root);
 static int execute_redirect(ASTNode *root);
@@ -143,6 +145,7 @@ int executor_execute(ASTNode *root){
             
             if(pid == 0){
                 setpgid(0, 0);
+                g_in_background = 1;
                 
                 signal(SIGINT, SIG_DFL);
                 signal(SIGQUIT, SIG_DFL);
@@ -215,7 +218,9 @@ static int execute_command(ASTNode *root){
     }
 
     if(pid == 0){
-        setpgid(0, 0);
+        if(!g_in_background){
+            setpgid(0, 0);
+        }
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
@@ -228,13 +233,17 @@ static int execute_command(ASTNode *root){
         exit(127);
     }
 
-    setpgid(pid, pid);
-    tcsetpgrp(STDIN_FILENO, pid);
+    if(!g_in_background){
+        setpgid(pid, pid);
+        tcsetpgrp(STDIN_FILENO, pid);
+    }
     
     int status;
     waitpid(pid, &status, WUNTRACED);
     
-    tcsetpgrp(STDIN_FILENO, getpgrp());
+    if(!g_in_background){
+        tcsetpgrp(STDIN_FILENO, getpgrp());
+    }
 
     if(WIFEXITED(status)){
         return WEXITSTATUS(status);
@@ -589,7 +598,9 @@ static int execute_subshell(ASTNode *root){
     }
     
     if(pid == 0){
-        setpgid(0, 0);
+        if(!g_in_background){
+            setpgid(0, 0);
+        }
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
@@ -600,13 +611,17 @@ static int execute_subshell(ASTNode *root){
         exit(code);
     }
     
-    setpgid(pid, pid);
-    tcsetpgrp(STDIN_FILENO, pid);
+    if(!g_in_background){
+        setpgid(pid, pid);
+        tcsetpgrp(STDIN_FILENO, pid);
+    }
     
     int status;
     waitpid(pid, &status, WUNTRACED);
     
-    tcsetpgrp(STDIN_FILENO, getpgrp());
+    if(!g_in_background){
+        tcsetpgrp(STDIN_FILENO, getpgrp());
+    }
     
     if(WIFEXITED(status)){
         return WEXITSTATUS(status);

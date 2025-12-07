@@ -24,7 +24,7 @@ void history_init(void){
 void history_load(void){
     history_init();
 
-    char path[PATH_MAX_SIZE];
+    char path[MAX_PATH_SIZE];
     const char *home = getenv("HOME");
     if(!home) return;
 

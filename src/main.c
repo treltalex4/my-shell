@@ -17,6 +17,7 @@
 
 int g_last_exit_code = 0;
 pid_t g_last_bg_pid = 0;
+static int g_exit_attempt = 0;
 
 int main(){
     terminal_init();
@@ -41,9 +42,27 @@ int main(){
         terminal_disable_raw_mode();
         
         if(!line){
+            // Проверка на остановленные задачи
+            int has_stopped = 0;
+            JobList *list = job_list_get();
+            for(Job *j = list->head; j; j = j->next){
+                if(job_is_stopped(j)){
+                    has_stopped = 1;
+                    break;
+                }
+            }
+            
+            if(has_stopped && g_exit_attempt == 0){
+                printf("\nThere are stopped jobs.\n");
+                g_exit_attempt = 1;
+                continue;
+            }
+            
             putchar('\n');
             break;
         }
+        
+        g_exit_attempt = 0;
 
         size_t len = strlen(line);
         if(len > 0 && line[len - 1] == '\n'){

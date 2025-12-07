@@ -1,6 +1,7 @@
 //Builtins.c
 #include "Builtins.h"
 #include "JobControl.h"
+#include "History.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -172,6 +173,7 @@ static int builtin_exit(char **args){
 
     if(args[1] != NULL) code = atoi(args[1]);
 
+    history_save();
     job_control_cleanup();
     exit(code);
 }
