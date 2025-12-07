@@ -14,11 +14,13 @@
 
 #define COLOR_RESET   "\x1b[0m"
 #define COLOR_BOLD  "\x1b[1m"
-#define COLOR_GREEN "\x1b[32m"
-#define COLOR_BLUE  "\x1b[34m"
-#define COLOR_CYAN  "\x1b[36m"
 #define COLOR_YELLOW    "\x1b[33m"
 #define COLOR_MAGENTA   "\x1b[35m"
+
+// RGB цвета для фона и символа
+#define BG_DARK_GRAY "\x1b[48;2;50;50;50m"      // тёмный серый фон
+#define FG_LIGHT_GRAY "\x1b[38;2;100;100;100m"  // светлый серый для символа ⟩
+#define FG_DARK_GRAY "\x1b[38;2;50;50;50m"      // цвет фона для символа \ue0b0
 
 static char g_utils_username[USER_NAME_MAX];
 static char g_utils_hostname[HOST_NAME_MAX];
@@ -48,8 +50,10 @@ void print_prompt(void){
         display_cwd = short_cwd;
     }
     
-    printf(COLOR_BOLD COLOR_YELLOW "%s@%s" COLOR_RESET ":" 
-           COLOR_BOLD COLOR_MAGENTA "%s" COLOR_RESET "$ ", 
+    printf(BG_DARK_GRAY COLOR_BOLD COLOR_YELLOW "%s@%s" COLOR_RESET 
+           BG_DARK_GRAY FG_LIGHT_GRAY "  " COLOR_RESET
+           BG_DARK_GRAY COLOR_BOLD COLOR_MAGENTA "%s " COLOR_RESET 
+           FG_DARK_GRAY "\ue0b0" COLOR_RESET " ", 
            g_utils_username, g_utils_hostname, display_cwd);
     
     fflush(stdout);
