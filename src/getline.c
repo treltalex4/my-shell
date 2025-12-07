@@ -1,5 +1,7 @@
 //getline.c
 #include "getline.h"
+#include "History.h"
+#include "Utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -139,6 +141,7 @@ char* my_getline(void) {
     size_t cap = DEFAULT_BUF_SIZE;
     size_t len = 0;
     size_t cursor = 0;
+    int history_index = history_count();
     
     char *buf = malloc(cap);
     if (!buf) {
@@ -273,7 +276,7 @@ char* my_getline(void) {
             
         case KEY_CTRL_L:
             write(STDOUT_FILENO, "\x1b[H\x1b[2J", 7);
-            write(STDOUT_FILENO, "> ", 2);
+            print_prompt();
             write(STDOUT_FILENO, buf, len);
             if (cursor < len) {
                 char seq[32];
@@ -316,8 +319,54 @@ char* my_getline(void) {
             break;
             
         case KEY_UP:
-        case KEY_DOWN:
+        if(history_index > 0){
+            history_index --;
+            const char* history_cmd = history_get(history_index);
+            if(history_cmd){
+                len = strlen(history_cmd);
+                if(len >= cap){
+                    cap = len + 1;
+                    char *new_buf = realloc(buf, cap);
+                    if(!new_buf) break;
+                    buf = new_buf;
+                }
+                strcpy(buf, history_cmd);
+                cursor = len;
 
+                write(STDOUT_FILENO, "\x1b[2K\r", 5);
+                print_prompt();
+                write(STDOUT_FILENO, buf, len);
+            }
+        }
+        break;
+        case KEY_DOWN:
+            if(history_index < history_count() - 1){
+                history_index++;
+                const char*history_cmd = history_get(history_index);
+                if(history_cmd){
+                    len = strlen(history_cmd);
+                    if(len >= cap){
+                        cap = len + 1;
+                        char *new_buf = realloc(buf, cap);
+                        if(!new_buf) break;
+                        buf = new_buf;
+                    }
+                    strcpy(buf, history_cmd);
+                    cursor = len;
+
+                    write(STDOUT_FILENO, "\x1b[2K\r", 5);
+                    print_prompt();
+                    write(STDOUT_FILENO, buf, len);
+                }
+            } else if(history_index == history_count() - 1){
+                history_index = history_count();
+                len = 0;
+                buf[0] = '\0';
+                cursor = 0;
+
+                write(STDOUT_FILENO, "\x1b[2K\r", 5);
+                print_prompt();
+            }
             break;
             
         case KEY_TAB:

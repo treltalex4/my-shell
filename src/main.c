@@ -12,56 +12,18 @@
 #include "getline.h"
 #include "JobControl.h"
 #include "Expander.h"
+#include "History.h"
+#include "Utils.h"
 
-#define HOST_NAME_MAX 256
-#define USER_NAME_MAX 256
-#define CWD_MAX_SIZE 256
-
-static char g_username[USER_NAME_MAX];
-static char g_hostname[HOST_NAME_MAX];
 int g_last_exit_code = 0;
 pid_t g_last_bg_pid = 0;
 
-static void init_prompt(void){
-    struct passwd *pw = getpwuid(getuid());
-    strncpy(g_username, pw ? pw->pw_name : "user", sizeof(g_username) - 1);
-    gethostname(g_hostname, sizeof(g_hostname));
-}
-
-#define COLOR_RESET   "\x1b[0m"
-#define COLOR_BOLD  "\x1b[1m"
-#define COLOR_GREEN "\x1b[32m"
-#define COLOR_BLUE  "\x1b[34m"
-#define COLOR_CYAN  "\x1b[36m"
-#define COLOR_YELLOW    "\x1b[33m"
-#define COLOR_MAGENTA   "\x1b[35m"
-
-static void print_prompt(void){
-    char cwd[CWD_MAX_SIZE];
-    getcwd(cwd, sizeof(cwd));
-    
-    char *home = getenv("HOME");
-    char short_cwd[CWD_MAX_SIZE];
-    char *display_cwd = cwd;
-    
-    if(home && strncmp(cwd, home, strlen(home)) == 0){
-        snprintf(short_cwd, sizeof(short_cwd), "~%s", cwd + strlen(home));
-        display_cwd = short_cwd;
-    }
-    
-    printf(COLOR_BOLD COLOR_YELLOW "%s@%s" COLOR_RESET ":" 
-           COLOR_BOLD COLOR_MAGENTA "%s" COLOR_RESET "$ ", 
-           g_username, g_hostname, display_cwd);
-    
-    fflush(stdout);
-}
-
 int main(){
-    init_prompt();
     terminal_init();
     job_control_init();
     job_control_setup_terminal();
     job_control_setup_signals();
+    history_load();
     
     Lexer lexer;
     Parser parser;
@@ -111,6 +73,7 @@ int main(){
         
         if(tree){
             g_last_exit_code = executor_execute(tree);
+            history_add(line);
             ast_free(tree);
         }
 
@@ -119,5 +82,6 @@ int main(){
         free(line);
     }
 
+    history_save();
     return 0;
 }
