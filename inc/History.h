@@ -19,5 +19,5 @@ void history_add(const char *cmd);
 const char *history_get(int index);
 const char *history_get_last(void);
 int history_count(void);
-// void history_clear(void);
-// History* history_get_global(void);
+void history_clear(void);
+int history_count(void);

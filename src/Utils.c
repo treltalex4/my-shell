@@ -1,4 +1,9 @@
-//Utils.c
+// Utils.c
+// Вспомогательные функции общего назначения
+// Основная функциональность:
+// - print_prompt(): цветной prompt с user@host и текущим каталогом
+// - buf_size_check(): проверка и автоматическое расширение буферов
+
 #include "Utils.h"
 
 #include <stdio.h>
@@ -12,21 +17,23 @@
 #define USER_NAME_MAX 256
 #define CWD_MAX_SIZE 256
 
+// ANSI escape коды для цветов (формат ESC[38;2;R;G;Bm для RGB)
 #define COLOR_RESET   "\x1b[0m"
 #define COLOR_BOLD  "\x1b[1m"
 #define COLOR_YELLOW    "\x1b[38;2;100;100;100m"
 #define COLOR_PINK   "\x1b[38;2;249;132;239m"
-#define COLOR_GREEN "\x1b[38;2;124;252;0m"
-#define COLOR_GREEN_DARK "\x1b[38;2;60;135;0m"
+#define COLOR_GREEN "\x1b[38;2;124;252;0m"           // Яркий зелёный
+#define COLOR_GREEN_DARK "\x1b[38;2;60;135;0m"      // Тёмный зелёный
 #define COLOR_BLUE  "\x1b[38;2;0;50;200m"
-#define COLOR_LIGHT_BLUE "\x1b[38;2;0;190;255m"
+#define COLOR_LIGHT_BLUE "\x1b[38;2;0;190;255m"     // Голубой
 #define COLOR_CYAN  "\x1b[38;2;0;255;255m"
 
-// RGB цвета для фона и символа
-#define BG_DARK_GRAY "\x1b[48;2;50;50;50m"      // тёмный серый фон
-#define FG_LIGHT_GRAY "\x1b[38;2;100;100;100m"  // светлый серый для символа ⟩
-#define FG_DARK_GRAY "\x1b[38;2;50;50;50m"      // цвет фона для символа \ue0b0
+// RGB цвета для фона (формат ESC[48;2;R;G;Bm) и powerline символа
+#define BG_DARK_GRAY "\x1b[48;2;50;50;50m"          // Тёмно-серый фон для prompt
+#define FG_LIGHT_GRAY "\x1b[38;2;100;100;100m"      // Светло-серый для разделителя
+#define FG_DARK_GRAY "\x1b[38;2;50;50;50m"          // Цвет фона для powerline символа \ue0b0
 
+// Кеш имени пользователя и хоста (инициализируются один раз)
 static char g_utils_username[USER_NAME_MAX];
 static char g_utils_hostname[HOST_NAME_MAX];
 static int g_utils_prompt_initialized = 0;
@@ -64,12 +71,17 @@ void print_prompt(void){
     fflush(stdout);
 }
 
+// Проверка размера буфера и автоматическое расширение
+// Если required >= текущий размер, удваивает capacity
+// Возвращает 1 при успехе, 0 при ошибке (realloc failed)
 int buf_size_check(char **buf, size_t *buf_size, size_t required){
     if (!buf || !buf_size) return 0;
     
+    // Текущий размер достаточен
     if(required < (*buf_size)){
         return 1;
     } else{
+        // Удваиваем размер (или используем DEFAULT_BUF_SIZE если buf_size было 0)
         size_t new_cap = *buf_size ? (*buf_size * 2) : DEFAULT_BUF_SIZE;
         char *tmp = realloc(*buf, new_cap);
         if(!tmp) {

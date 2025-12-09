@@ -5,23 +5,23 @@
 #include "Token.h"
 
 typedef enum ASTNodeType {
-    AST_COMMAND,
-    AST_PIPELINE,
-    AST_PIPELINE_ERR,
-    AST_SEQUENCE,
-    AST_AND,
-    AST_OR,
-    AST_BACKGROUND,
-    AST_SUBSHELL,
-    AST_REDIRECT
+    AST_COMMAND,        // Простая команда с аргументами
+    AST_PIPELINE,       // Конвейер команд |
+    AST_PIPELINE_ERR,   // Конвейер с перенаправлением stderr |&
+    AST_SEQUENCE,       // Последовательность команд ;
+    AST_AND,            // Логическое И &&
+    AST_OR,             // Логическое ИЛИ ||
+    AST_BACKGROUND,     // Фоновое выполнение &
+    AST_SUBSHELL,       // Подоболочка (...)
+    AST_REDIRECT        // Перенаправление ввода/вывода
 } ASTNodeType;
 
 typedef enum RedirectType {
-    REDIR_IN,
-    REDIR_OUT,
-    REDIR_OUT_APPEND,
-    REDIR_ERR,
-    REDIR_ERR_APPEND
+    REDIR_IN,           // < (ввод из файла)
+    REDIR_OUT,          // > (вывод в файл, перезапись)
+    REDIR_OUT_APPEND,   // >> (вывод в файл, добавление)
+    REDIR_ERR,          // 2> (stderr в файл, перезапись)
+    REDIR_ERR_APPEND    // 2>> (stderr в файл, добавление)
 } RedirectType;
 
 typedef struct ASTNode ASTNode;

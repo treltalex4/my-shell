@@ -1,4 +1,5 @@
-//getline.c
+// getline.c
+
 #include "getline.h"
 #include "History.h"
 #include "Utils.h"
@@ -11,10 +12,8 @@
 
 #define DEFAULT_BUF_SIZE 256
 
-
 static struct termios g_orig_termios;
 static int g_termios_saved = 0;
-
 
 typedef enum {
     KEY_CHAR,
@@ -39,7 +38,6 @@ typedef enum {
     KEY_NONE
 } KeyType;
 
-
 void terminal_init(void) {
     if (!g_termios_saved) {
         tcgetattr(STDIN_FILENO, &g_orig_termios);
@@ -47,6 +45,7 @@ void terminal_init(void) {
     }
 }
 
+// Включение raw mode: отключает ICANON (построчный ввод) и ECHO
 void terminal_enable_raw_mode(void) {
     if (!g_termios_saved) {
         terminal_init();
@@ -55,7 +54,6 @@ void terminal_enable_raw_mode(void) {
     struct termios raw = g_orig_termios;
     
     raw.c_lflag &= ~(ICANON | ECHO);
-    
     raw.c_iflag &= ~(IXON);
     
     raw.c_cc[VMIN] = 1;
@@ -70,14 +68,13 @@ void terminal_disable_raw_mode(void) {
     }
 }
 
-
+// Чтение и распознавание клавиши (обычные символы, Ctrl, escape-коды)
 static KeyType read_key(char *out_char) {
     char c;
     ssize_t nread = read(STDIN_FILENO, &c, 1);
     
     if (nread <= 0) return KEY_NONE;
     
-
     if (c == 1) return KEY_CTRL_A;
     if (c == 3) return KEY_CTRL_C;
     if (c == 4) return KEY_CTRL_D;
@@ -89,14 +86,13 @@ static KeyType read_key(char *out_char) {
     if (c == '\n' || c == '\r') return KEY_ENTER;
     if (c == 127 || c == 8) return KEY_BACKSPACE;
     
-
+    // Escape-последовательности (стрелки, Home/End, Delete)
     if (c == '\x1b') {
         char seq[3];
         if (read(STDIN_FILENO, &seq[0], 1) != 1) return KEY_ESC;
         if (read(STDIN_FILENO, &seq[1], 1) != 1) return KEY_ESC;
         
         if (seq[0] == '[') {
-
             switch (seq[1]) {
                 case 'A': return KEY_UP;
                 case 'B': return KEY_DOWN;
@@ -118,7 +114,6 @@ static KeyType read_key(char *out_char) {
                     break;
             }
         } else if (seq[0] == 'O') {
-
             switch (seq[1]) {
                 case 'H': return KEY_HOME;
                 case 'F': return KEY_END;
@@ -127,7 +122,6 @@ static KeyType read_key(char *out_char) {
         return KEY_ESC;
     }
     
-
     if (c >= 32 && c <= 126) {
         *out_char = c;
         return KEY_CHAR;
@@ -136,7 +130,7 @@ static KeyType read_key(char *out_char) {
     return KEY_NONE;
 }
 
-
+// Интерактивный ввод строки с редактированием и историей
 char* my_getline(void) {    
     size_t cap = DEFAULT_BUF_SIZE;
     size_t len = 0;
@@ -157,7 +151,6 @@ char* my_getline(void) {
         
         switch (key) {
         case KEY_CHAR:
-
             if (len + 2 >= cap) {
                 cap *= 2;
                 char *new_buf = realloc(buf, cap);
@@ -168,13 +161,11 @@ char* my_getline(void) {
                 buf = new_buf;
             }
             
-
             memmove(buf + cursor + 1, buf + cursor, len - cursor + 1);
             buf[cursor] = c;
             len++;
             cursor++;
             
-
             write(STDOUT_FILENO, &c, 1);
             if (cursor < len) {
                 write(STDOUT_FILENO, "\x1b[s", 3);
@@ -243,20 +234,17 @@ char* my_getline(void) {
             }
             break;
             
-        case KEY_CTRL_U:
-
+        case KEY_CTRL_U:  // Удалить от начала до курсора
             if (cursor > 0) {
                 memmove(buf, buf + cursor, len - cursor + 1);
                 len -= cursor;
                 
-
                 char seq[32];
                 snprintf(seq, sizeof(seq), "\x1b[%zuD", cursor);
                 write(STDOUT_FILENO, seq, strlen(seq));
                 write(STDOUT_FILENO, "\x1b[K", 3);
                 write(STDOUT_FILENO, buf, len);
                 
-
                 if (len > 0) {
                     snprintf(seq, sizeof(seq), "\x1b[%zuD", len);
                     write(STDOUT_FILENO, seq, strlen(seq));
@@ -265,8 +253,7 @@ char* my_getline(void) {
             }
             break;
             
-        case KEY_CTRL_K:
-
+        case KEY_CTRL_K:  // Удалить от курсора до конца
             if (cursor < len) {
                 buf[cursor] = '\0';
                 len = cursor;
@@ -274,7 +261,7 @@ char* my_getline(void) {
             }
             break;
             
-        case KEY_CTRL_L:
+        case KEY_CTRL_L:  // Очистка экрана
             write(STDOUT_FILENO, "\x1b[H\x1b[2J", 7);
             print_prompt();
             write(STDOUT_FILENO, buf, len);
@@ -285,13 +272,11 @@ char* my_getline(void) {
             }
             break;
             
-        case KEY_CTRL_D:
+        case KEY_CTRL_D:  // EOF или Delete
             if (len == 0) {
-
                 free(buf);
                 return NULL;
             }
-
             if (cursor < len) {
                 memmove(buf + cursor, buf + cursor + 1, len - cursor);
                 len--;
@@ -302,13 +287,11 @@ char* my_getline(void) {
             }
             break;
             
-        case KEY_CTRL_C:
-
+        case KEY_CTRL_C:  // Прерывание ввода
             write(STDOUT_FILENO, "^C\n", 3);
             len = 0;
             cursor = 0;
             buf[0] = '\0';
-
             buf[0] = '\n';
             buf[1] = '\0';
             return buf;
@@ -318,9 +301,9 @@ char* my_getline(void) {
             done = 1;
             break;
             
-        case KEY_UP:
+        case KEY_UP:  // История назад
         if(history_index > 0){
-            history_index --;
+            history_index--;
             const char* history_cmd = history_get(history_index);
             if(history_cmd){
                 len = strlen(history_cmd);
@@ -332,14 +315,14 @@ char* my_getline(void) {
                 }
                 strcpy(buf, history_cmd);
                 cursor = len;
-
                 write(STDOUT_FILENO, "\x1b[2K\r", 5);
                 print_prompt();
                 write(STDOUT_FILENO, buf, len);
             }
         }
         break;
-        case KEY_DOWN:
+        
+        case KEY_DOWN:  // История вперёд
             if(history_index < history_count() - 1){
                 history_index++;
                 const char*history_cmd = history_get(history_index);
@@ -353,7 +336,6 @@ char* my_getline(void) {
                     }
                     strcpy(buf, history_cmd);
                     cursor = len;
-
                     write(STDOUT_FILENO, "\x1b[2K\r", 5);
                     print_prompt();
                     write(STDOUT_FILENO, buf, len);
@@ -363,7 +345,6 @@ char* my_getline(void) {
                 len = 0;
                 buf[0] = '\0';
                 cursor = 0;
-
                 write(STDOUT_FILENO, "\x1b[2K\r", 5);
                 print_prompt();
             }
@@ -393,7 +374,7 @@ char* my_getline(void) {
     return buf;
 }
 
-
+// Проверка незакрытых конструкций (кавычки, ${...}, \)
 int has_unclosed_syntax(const char *str) {
     int single = 0;
     int double_q = 0;
@@ -416,7 +397,6 @@ int has_unclosed_syntax(const char *str) {
         }
     }
     
-
     int backslash_continue = 0;
     if (len > 0 && str[len - 1] == '\\') {
         backslash_continue = 1;
@@ -427,7 +407,6 @@ int has_unclosed_syntax(const char *str) {
     
     return single || double_q || brace || backslash_continue;
 }
-
 
 char* str_concat(char *s1, const char *s2) {
     if (!s2) return s1;
@@ -446,7 +425,7 @@ char* str_concat(char *s1, const char *s2) {
     return result;
 }
 
-
+// Чтение команды с поддержкой многострочного ввода
 char* read_full_command(void) {
     char *command = my_getline();
     if (!command) {
@@ -462,7 +441,7 @@ char* read_full_command(void) {
             return NULL;
         }
         
-
+        // Удаляем backslash перед склеиванием
         size_t cmd_len = strlen(command);
         if (cmd_len > 0 && command[cmd_len - 1] == '\\') {
             command[cmd_len - 1] = '\0';

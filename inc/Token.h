@@ -39,5 +39,3 @@ typedef struct Token {
     QuoteCount quote;
     size_t pos;
 } Token;
-
-

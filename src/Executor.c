@@ -1,4 +1,8 @@
-//Executor.c
+// Executor.c
+// Модуль выполнения AST (Abstract Syntax Tree)
+// Обрабатывает все типы узлов: команды, pipeline, перенаправления, &&/||, subshell, background
+// Управляет процессами, сигналами и job control
+
 #include "Executor.h"
 #include "Builtins.h"
 #include "JobControl.h"
@@ -11,6 +15,8 @@
 #include <fcntl.h>
 #include <signal.h>
 
+// Флаг, указывающий что процесс выполняется в фоне
+// Используется чтобы избежать вызова tcsetpgrp в дочерних процессах фоновых задач
 static int g_in_background = 0;
 
 static int execute_command(ASTNode *root);
@@ -18,6 +24,8 @@ static int execute_pipeline(ASTNode *root);
 static int execute_redirect(ASTNode *root);
 static int execute_and_or(ASTNode *root);
 static int execute_subshell(ASTNode *root);
+// Вспомогательная функция для преобразования AST в строку команды
+// Используется для отображения команды в job list
 static char* ast_to_string(ASTNode *node);
 
 static char* ast_to_string(ASTNode *node) {
@@ -28,12 +36,14 @@ static char* ast_to_string(ASTNode *node) {
     
     switch (node->type) {
     case AST_COMMAND: {
+        // Вычисляем длину итоговой строки (все аргументы + пробелы)
         for (size_t i = 0; node->data.command.args[i]; i++) {
             len += strlen(node->data.command.args[i]) + 1;        }
         result = malloc(len + 1);
         if (!result) return strdup("???");
         result[0] = '\0';
         
+        // Собираем команду из аргументов через пробел
         for (size_t i = 0; node->data.command.args[i]; i++) {
             if (i > 0) strcat(result, " ");
             strcat(result, node->data.command.args[i]);
@@ -42,6 +52,7 @@ static char* ast_to_string(ASTNode *node) {
     }
     case AST_PIPELINE:
     case AST_PIPELINE_ERR: {
+        // Рекурсивно преобразуем левую и правую части pipeline
         char *left = ast_to_string(node->data.binary.left);
         char *right = ast_to_string(node->data.binary.right);
         len = strlen(left) + strlen(right) + 4;        result = malloc(len + 1);
@@ -107,6 +118,8 @@ static char* ast_to_string(ASTNode *node) {
     }
 }
 
+// Главная функция выполнения AST
+// Диспетчеризует выполнение в зависимости от типа узла
 int executor_execute(ASTNode *root){
     if(!root){
         return 0;
@@ -144,17 +157,22 @@ int executor_execute(ASTNode *root){
             }
             
             if(pid == 0){
+                // Дочерний процесс: создаём новую группу процессов
                 setpgid(0, 0);
+                // Устанавливаем флаг, чтобы вложенные команды не вызывали tcsetpgrp
                 g_in_background = 1;
                 
+                // Игнорируем Ctrl+C/Ctrl+Z для фоновых процессов
                 signal(SIGINT, SIG_DFL);
                 signal(SIGQUIT, SIG_DFL);
                 signal(SIGTSTP, SIG_DFL);
+                // Игнорируем попытки чтения/записи в терминал
                 signal(SIGTTIN, SIG_IGN);
                 signal(SIGTTOU, SIG_IGN);
                 signal(SIGCHLD, SIG_DFL);
                 
-                // Для простой команды сразу вызываем execvp
+                // Оптимизация: для простой команды избегаем лишнего executor_execute
+                // и сразу делаем exec (экономия памяти и времени)
                 if(root->data.subshell && root->data.subshell->type == AST_COMMAND){
                     char **args = root->data.subshell->data.command.args;
                     if(args && args[0]){
@@ -171,13 +189,17 @@ int executor_execute(ASTNode *root){
                 exit(code);
             }
             
+            // Родительский процесс: гарантируем что дочерний в своей группе
             setpgid(pid, pid);
             
+            // Сохраняем PID для $! (последний фоновый процесс)
             extern pid_t g_last_bg_pid;
             g_last_bg_pid = pid;
             
+            // Создаём строковое представление команды для job list
             char *cmd_str = ast_to_string(root->data.subshell);
             
+            // Добавляем задачу в список фоновых задач
             Job *job = job_create(pid, cmd_str, JOB_BACKGROUND);
             if(job){
                 job_add_process(job, pid, cmd_str);
@@ -198,6 +220,8 @@ int executor_execute(ASTNode *root){
     }
 }
 
+// Выполнение простой команды
+// Встроенные команды выполняются в текущем процессе, внешние через fork/exec
 static int execute_command(ASTNode *root){
     char **args = root->data.command.args;
 
@@ -206,6 +230,7 @@ static int execute_command(ASTNode *root){
         return 1;
     }
 
+    // Встроенные команды выполняются без fork
     if(is_builtin(args[0])){
         return execute_builtin(args);
     }
@@ -218,37 +243,49 @@ static int execute_command(ASTNode *root){
     }
 
     if(pid == 0){
+        // Дочерний процесс: создаём новую группу если не в фоне
         if(!g_in_background){
-            setpgid(0, 0);
+            setpgid(0, 0);  // Делаем себя лидером новой группы
         }
+        // Восстанавливаем обработчики сигналов по умолчанию
+        // чтобы команды могли корректно реагировать на Ctrl+C, Ctrl+Z
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTTIN, SIG_DFL);
         signal(SIGTTOU, SIG_DFL);
         
+        // Заменяем процесс на внешнюю команду
         execvp(args[0], args);
 
+        // Если execvp вернулся - ошибка (команда не найдена)
         perror(args[0]);
-        exit(127);
+        exit(127);  // Код 127 - команда не найдена (стандарт POSIX)
     }
 
+    // Родительский процесс (shell):
     if(!g_in_background){
-        setpgid(pid, pid);
+        setpgid(pid, pid);  // Гарантируем что дочерний процесс в своей группе
+        // Передаём управление терминалом дочернему процессу
+        // чтобы он мог получать сигналы от Ctrl+C/Ctrl+Z
         tcsetpgrp(STDIN_FILENO, pid);
     }
     
     int status;
+    // Ожидаем завершения или остановки процесса (WUNTRACED для Ctrl+Z)
     waitpid(pid, &status, WUNTRACED);
     
+    // Возвращаем управление терминалом shell'у
     if(!g_in_background){
         tcsetpgrp(STDIN_FILENO, getpgrp());
     }
 
+    // Процесс завершился нормально - возвращаем код выхода
     if(WIFEXITED(status)){
         return WEXITSTATUS(status);
     }
     
+    // Если subshell остановлен (Ctrl+Z), создаём job
     if(WIFSTOPPED(status)){
         char *cmd_str = ast_to_string(root);
         Job *job = job_create(pid, cmd_str, JOB_STOPPED);
@@ -260,25 +297,28 @@ static int execute_command(ASTNode *root){
         free(cmd_str);
         return 0;
     }
-
+    
     return 1;
 }
-
+// Также определяет где нужно перенаправлять stderr (|&)
 static int collect_pipeline_commands(ASTNode *root, ASTNode **commands, int *pipe_stderr, int max_commands) {
     int count = 0;
     ASTNode *current = root;
     
+    // Проходим по цепочке pipeline узлов (левоассоциативное дерево)
     while (current && (current->type == AST_PIPELINE || current->type == AST_PIPELINE_ERR)) {
         if (count >= max_commands - 1) {
             fprintf(stderr, "pipeline: too many commands\n");
             return -1;
         }
-        commands[count] = current->data.binary.left;
+        commands[count] = current->data.binary.left;  // Левая часть - команда
+        // Запоминаем нужно ли перенаправить stderr (|& вместо |)
         pipe_stderr[count] = (current->type == AST_PIPELINE_ERR);
         count++;
-        current = current->data.binary.right;
+        current = current->data.binary.right;  // Идём вправо по цепочке
     }
     
+    // Последняя команда в цепочке (самая правая)
     if (current) {
         commands[count++] = current;
     }
@@ -286,6 +326,7 @@ static int collect_pipeline_commands(ASTNode *root, ASTNode **commands, int *pip
     return count;
 }
 
+// Выполнение одной команды в pipeline (вызывается в дочернем процессе)
 static void execute_pipeline_command(ASTNode *node) {
     if (node->type == AST_COMMAND) {
         char **args = node->data.command.args;
@@ -305,6 +346,8 @@ static void execute_pipeline_command(ASTNode *node) {
     }
 }
 
+// Выполнение pipeline (cmd1 | cmd2 | cmd3)
+// Создаёт pipes между командами, fork для каждой команды, настраивает stdin/stdout/stderr
 static int execute_pipeline(ASTNode *root) {
     ASTNode *commands[64];
     int pipe_stderr[64] = {0};    
@@ -317,10 +360,13 @@ static int execute_pipeline(ASTNode *root) {
         return executor_execute(commands[0]);
     }
     
+    // Создаём pipes для связи между командами
+    // Для N команд нужно N-1 pipe: [cmd1] -> pipe0 -> [cmd2] -> pipe1 -> [cmd3]
     int pipes[cmd_count - 1][2];
     for (int i = 0; i < cmd_count - 1; i++) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe");
+            // При ошибке закрываем уже созданные pipes
             for (int j = 0; j < i; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
@@ -329,12 +375,14 @@ static int execute_pipeline(ASTNode *root) {
         }
     }
     
+    // Создаём процесс для каждой команды в pipeline
     pid_t pids[cmd_count];
     for (int i = 0; i < cmd_count; i++) {
         pids[i] = fork();
         
         if (pids[i] < 0) {
             perror("fork");
+            // При ошибке закрываем все pipes
             for (int j = 0; j < cmd_count - 1; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
@@ -343,6 +391,7 @@ static int execute_pipeline(ASTNode *root) {
         }
         
         if (pids[i] == 0) {
+            // Все процессы pipeline помещаются в одну группу (первый процесс - лидер)
             setpgid(0, pids[0] == 0 ? 0 : pids[0]);
             signal(SIGINT, SIG_DFL);
             signal(SIGTSTP, SIG_DFL);
@@ -350,18 +399,23 @@ static int execute_pipeline(ASTNode *root) {
             signal(SIGTTIN, SIG_DFL);
             signal(SIGTTOU, SIG_DFL);
             
+            // Настройка stdin: читаем из предыдущего pipe (если не первая команда)
             if (i > 0) {
+                // Заменяем stdin на читающий конец предыдущего pipe
                 if (dup2(pipes[i-1][0], STDIN_FILENO) < 0) {
                     perror("dup2");
                     exit(1);
                 }
             }
             
+            // Настройка stdout: пишем в следующий pipe (если не последняя команда)
             if (i < cmd_count - 1) {
+                // Заменяем stdout на пишущий конец текущего pipe
                 if (dup2(pipes[i][1], STDOUT_FILENO) < 0) {
                     perror("dup2");
                     exit(1);
                 }
+                // Для |& (pipe stderr) также перенаправляем stderr
                 if (pipe_stderr[i]) {
                     if (dup2(pipes[i][1], STDERR_FILENO) < 0) {
                         perror("dup2");
@@ -370,6 +424,7 @@ static int execute_pipeline(ASTNode *root) {
                 }
             }
             
+            // Закрываем все копии pipe дескрипторов (уже сделали dup2)
             for (int j = 0; j < cmd_count - 1; j++) {
                 close(pipes[j][0]);
                 close(pipes[j][1]);
@@ -380,21 +435,26 @@ static int execute_pipeline(ASTNode *root) {
         }
     }
     
+    // Родитель закрывает все pipes (дочерние процессы уже сделали dup2)
     for (int i = 0; i < cmd_count - 1; i++) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
     
+    // Убеждаемся что все процессы в одной группе
     for (int i = 0; i < cmd_count; i++) {
         setpgid(pids[i], pids[0]);
     }
     
+    // Передаём терминал группе pipeline (первый процесс - лидер группы)
     tcsetpgrp(STDIN_FILENO, pids[0]);
     
     int last_status = 0;
+    // Ожидаем завершения всех команд в pipeline
     for (int i = 0; i < cmd_count; i++) {
         int status;
         waitpid(pids[i], &status, WUNTRACED);
+        // Код возврата pipeline = код возврата последней команды
         if (i == cmd_count - 1) {
             if (WIFEXITED(status)) {
                 last_status = WEXITSTATUS(status);
@@ -404,50 +464,58 @@ static int execute_pipeline(ASTNode *root) {
         }
     }
     
+    // Возвращаем управление терминалом shell'у
     tcsetpgrp(STDIN_FILENO, getpgrp());
     
     return last_status;
 }
 
+// Выполнение перенаправления ввода/вывода
+// Сохраняет оригинальные дескрипторы, перенаправляет, выполняет команду, восстанавливает
 static int execute_redirect(ASTNode *root){
     int file_fd, saved_fd = -1, saved_fd2 = -1;
 
     switch(root->data.redirect.type) {
-    case REDIR_IN:
+    case REDIR_IN:  // Перенаправление ввода: cmd < file
         file_fd = open(root->data.redirect.filename, O_RDONLY);
         if(file_fd < 0){
             perror(root->data.redirect.filename);
             return 1;
         }
 
+        // Сохраняем оригинальный stdin для последующего восстановления
         saved_fd = dup(STDIN_FILENO);
         if(saved_fd < 0){
             perror("dup");
             close(file_fd);
             return 1;
         }
+        // Заменяем stdin на файл
         if(dup2(file_fd, STDIN_FILENO) < 0){
             perror("dup2");
             close(file_fd);
             close(saved_fd);
             return 1;
         }
-        close(file_fd);
+        close(file_fd);  // Закрываем file_fd, stdin теперь указывает на файл
         break;
     
-    case REDIR_OUT:
+    case REDIR_OUT:  // Перенаправление вывода с перезаписью: cmd > file
+        // O_TRUNC - очищаем файл если существует
         file_fd = open(root->data.redirect.filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if(file_fd < 0){
             perror(root->data.redirect.filename);
             return 1;
         }
 
+        // Сохраняем оригинальный stdout
         saved_fd = dup(STDOUT_FILENO);
         if(saved_fd < 0){
             perror("dup");
             close(file_fd);
             return 1;
         }
+        // Заменяем stdout на файл
         if(dup2(file_fd, STDOUT_FILENO) < 0){
             perror("dup2");
             close(file_fd);
@@ -457,7 +525,8 @@ static int execute_redirect(ASTNode *root){
         close(file_fd);
         break;
 
-    case REDIR_OUT_APPEND:
+    case REDIR_OUT_APPEND:  // Перенаправление вывода с добавлением: cmd >> file
+        // O_APPEND - добавляем в конец файла, не очищая
         file_fd = open(root->data.redirect.filename, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if(file_fd < 0){
             perror(root->data.redirect.filename);
@@ -479,13 +548,14 @@ static int execute_redirect(ASTNode *root){
         close(file_fd);
         break;
 
-    case REDIR_ERR:
+    case REDIR_ERR:  // Перенаправление stdout и stderr: cmd &> file
         file_fd = open(root->data.redirect.filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if(file_fd < 0){
             perror(root->data.redirect.filename);
             return 1;
         }
 
+        // Сохраняем оба дескриптора: stdout и stderr
         saved_fd = dup(STDOUT_FILENO);
         saved_fd2 = dup(STDERR_FILENO);
         if(saved_fd < 0 || saved_fd2 < 0){
@@ -493,6 +563,7 @@ static int execute_redirect(ASTNode *root){
             close(file_fd);
             return 1;
         }
+        // Перенаправляем и stdout и stderr в файл
         if(dup2(file_fd, STDOUT_FILENO) < 0 || dup2(file_fd, STDERR_FILENO) < 0){
             perror("dup2");
             close(file_fd);
@@ -533,8 +604,10 @@ static int execute_redirect(ASTNode *root){
         return 1;
     }
 
+    // Выполняем команду с перенаправленными дескрипторами
     int code = executor_execute(root->data.redirect.command);
 
+    // Восстанавливаем оригинальные дескрипторы после выполнения
     if(saved_fd >= 0){
         int restore_result = -1;
         switch(root->data.redirect.type) {
@@ -549,6 +622,7 @@ static int execute_redirect(ASTNode *root){
 
         case REDIR_ERR:
         case REDIR_ERR_APPEND:
+            // Восстанавливаем оба дескриптора
             restore_result = dup2(saved_fd, STDOUT_FILENO);
             if(saved_fd2 >= 0){
                 dup2(saved_fd2, STDERR_FILENO);
@@ -569,6 +643,9 @@ static int execute_redirect(ASTNode *root){
     return code;
 }
 
+// Выполнение логических операторов && и ||
+// && - выполняет правую часть только если левая успешна (код 0)
+// || - выполняет правую часть только если левая неуспешна (код != 0)
 static int execute_and_or(ASTNode *root){
     int left_code = executor_execute(root->data.binary.left);
 
@@ -589,6 +666,8 @@ static int execute_and_or(ASTNode *root){
     return 1;
 }
 
+// Выполнение subshell (команды в скобках)
+// Создаёт отдельный процесс для изоляции окружения
 static int execute_subshell(ASTNode *root){
     pid_t pid = fork();
     
@@ -598,15 +677,18 @@ static int execute_subshell(ASTNode *root){
     }
     
     if(pid == 0){
+        // Дочерний процесс: создаём изолированное окружение
         if(!g_in_background){
-            setpgid(0, 0);
+            setpgid(0, 0);  // Новая группа процессов
         }
+        // Восстанавливаем обработку сигналов
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
         signal(SIGTTIN, SIG_DFL);
         signal(SIGTTOU, SIG_DFL);
         
+        // Выполняем команды внутри subshell и завершаемся
         int code = executor_execute(root->data.subshell);
         exit(code);
     }
@@ -627,6 +709,7 @@ static int execute_subshell(ASTNode *root){
         return WEXITSTATUS(status);
     }
     
+    // Если subshell остановлен (Ctrl+Z), создаём job
     if(WIFSTOPPED(status)){
         char *cmd_str = ast_to_string(root);
         Job *job = job_create(pid, cmd_str, JOB_STOPPED);
