@@ -92,9 +92,7 @@ void job_control_setup_terminal(void) {
     // Игнорируем SIGTTOU чтобы tcsetpgrp не блокировал нас
     // (фоновый процесс получает SIGTTOU при попытке tcsetpgrp)
     signal(SIGTTOU, SIG_IGN);
-    
-    g_shell_pgid = getpid();
-    
+        
     // Получаем текущую process group
     g_shell_pgid = getpgrp();
     
@@ -108,7 +106,6 @@ void job_control_setup_terminal(void) {
     // Пытаемся создать свою process group (0,0 = текущий процесс становится лидером)
     // EPERM означает что мы уже session leader - это нормально
     if (setpgid(0, 0) < 0 && errno != EPERM && errno != EACCES) {
-        // Не фатально - продолжаем
     }
     
     g_shell_pgid = getpgrp();
