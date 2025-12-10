@@ -103,8 +103,8 @@ void job_control_setup_terminal(void) {
         g_shell_pgid = getpgrp();
     }
     
-    // Пытаемся создать свою process group (0,0 = текущий процесс становится лидером)
-    // EPERM означает что мы уже session leader - это нормально
+    // Пытаемся создать свою process group (0,0 текущий процесс становится лидером)
+    // EPERM означает что мы уже лидер сессии
     if (setpgid(0, 0) < 0 && errno != EPERM && errno != EACCES) {
     }
     
@@ -138,7 +138,7 @@ Job* job_create(pid_t pgid, const char *command_line, JobState state) {
         return NULL;
     }
     
-    // Присваиваем уникальный ID и инкрементируем счётчик
+    // Присваиваем уникальный ID и увеличиваем счётчик
     job->job_id = g_job_list.next_job_id++;
     job->pgid = pgid;
     job->state = state;
