@@ -58,7 +58,6 @@ dkms.conf
 test_*.c
 input.txt
 output.txt
-Tests.md
 test.txt
 append.txt
 out.txt
