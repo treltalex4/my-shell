@@ -25,7 +25,7 @@ static int builtin_kill(char **args);
 static int builtin_set(char **args);
 static int builtin_unset(char **args);
 static int builtin_unset(char **args);
-static int builtin_ls(char **args);
+//static int builtin_ls(char **args);
 static int builtin_history(char **args);
 
 // Проверка, является ли команда встроенной
@@ -42,7 +42,7 @@ int is_builtin(const char *command) {
         "kill",
         "set",
         "unset",
-        "ls",
+        //"ls",
         "history",
         NULL
     };
@@ -91,9 +91,9 @@ int execute_builtin(char **args){
     else if(strcmp(args[0], "unset") == 0){
         return builtin_unset(args);
     }
-    else if(strcmp(args[0], "ls") == 0){
-        return builtin_ls(args);
-    }
+    // else if(strcmp(args[0], "ls") == 0){
+    //     return builtin_ls(args);
+    // }
     else if(strcmp(args[0], "history") == 0){
         return builtin_history(args);
     }
@@ -183,15 +183,18 @@ static int builtin_echo(char **args){
 }
 
 // Выход из shell с кодом возврата
-// Сохраняет историю и очищает job control перед выходом
+// Устанавливает флаг выхода, очистка происходит в main
+extern int g_should_exit;
+extern int g_exit_code;
+
 static int builtin_exit(char **args){
     int code = 0;
 
     if(args[1] != NULL) code = atoi(args[1]);
 
-    history_save();
-    job_control_cleanup();
-    exit(code);
+    g_exit_code = code;
+    g_should_exit = 1;
+    return code;
 }
 
 // Вывод справки по встроенным командам
@@ -438,10 +441,10 @@ static int builtin_unset(char **args){
 }
 
 // Обёртка для системной команды ls с цветным выводом
-static int builtin_ls(char **args){
-    (void)args;
-    return system("ls --color=auto");
-}
+// static int builtin_ls(char **args){
+//     (void)args;
+//     return system("ls --color=auto");
+// }
 
 // Вывод истории команд или её очистка
 // history - вывод всей истории с номерами

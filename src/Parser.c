@@ -1,22 +1,26 @@
-//Parser.c
+// Parser.c
+
 #include "Parser.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
+// Вспомогательные функции для работы с токенами
 static const Token *current_token(Parser *parser);
 static const Token *previous_token(Parser *parser);
 static void advance(Parser *parser);
 static int match(Parser *parser, TokenType type);
 
-static ASTNode *parse_command_line(Parser *parser);
-static ASTNode *parse_and_or_list(Parser *parser);
-static ASTNode *parse_pipeline(Parser *parser);
-static ASTNode *parse_simple_command(Parser *parser);
-static ASTNode *parse_redirects(Parser *parser, ASTNode *command);
-static ASTNode *parse_primary(Parser *parser);
+// Функции парсинга по уровням приоритета (от низшего к высшему)
+static ASTNode *parse_command_line(Parser *parser);   // ; &
+static ASTNode *parse_and_or_list(Parser *parser);    // && ||
+static ASTNode *parse_pipeline(Parser *parser);       // | |&
+static ASTNode *parse_simple_command(Parser *parser); // слова команды
+static ASTNode *parse_redirects(Parser *parser, ASTNode *command); // > >> < &>
+static ASTNode *parse_primary(Parser *parser);        // команда или (subshell)
 
+// Инициализация парсера
 void parser_init(Parser *parser, TokenArray *tokens){
     assert(parser && "parser_init: null parser ptr");
     assert(tokens && "parser_init: null tokens ptr");
@@ -25,12 +29,16 @@ void parser_init(Parser *parser, TokenArray *tokens){
     parser->pos = 0;
 }
 
+// Главная функция парсинга - точка входа
+// Пропускает пустые строки, парсит команду, проверяет что дошли до EOF
 ASTNode *parser_parse(Parser *parser){
     assert(parser && "parser_parse: null parser ptr");
     assert(parser->tokens && "parser_parse: null tokens ptr");
 
+    // Пропускаем пустые строки в начале
     while (match(parser, TOKEN_NEWLINE)) {}
     
+    // Пустой ввод
     if (match(parser, TOKEN_EOF)) {
         return NULL;
     }
@@ -41,8 +49,10 @@ ASTNode *parser_parse(Parser *parser){
         return NULL;
     }
     
+    // Пропускаем завершающий \n (добавляется в my_getline)
     while (match(parser, TOKEN_NEWLINE)) {}
     
+    // Проверяем что распарсили всё
     const Token *tok = current_token(parser);
     if (tok && tok->type != TOKEN_EOF) {
         fprintf(stderr, "Parser error: unexpected token '%s' at position %zu\n",
@@ -54,6 +64,7 @@ ASTNode *parser_parse(Parser *parser){
     return tree;
 }
 
+// Проверяет текущий токен и продвигает позицию если совпал
 static int match(Parser *parser, TokenType type) {
     const Token *tok = current_token(parser);
     if(tok && tok->type == type){
@@ -63,23 +74,28 @@ static int match(Parser *parser, TokenType type) {
     return 0;
 }
 
+// Переход к следующему токену
 static void advance(Parser *parser){
     if(parser->pos < parser->tokens->count){
         parser->pos++;
     }
 }
 
+// Получить текущий токен (не продвигая позицию)
 static const Token *current_token(Parser *parser){
     if(parser->pos>=parser->tokens->count) return NULL;
 
     return &parser->tokens->tokens[parser->pos];
 }
 
+// Получить предыдущий токен (после match нужно узнать какой оператор был)
 static const Token *previous_token(Parser *parser){
     if(parser->pos == 0) return NULL;
     return &parser->tokens->tokens[parser->pos - 1];
 }
 
+// Парсинг последовательности команд: cmd1; cmd2 & cmd3
+// Самый низкий приоритет операторов
 static ASTNode *parse_command_line(Parser *parser){
     ASTNode *left = parse_and_or_list(parser);
     if(!left) return NULL;
@@ -94,8 +110,10 @@ static ASTNode *parse_command_line(Parser *parser){
 
         while(match(parser, TOKEN_NEWLINE)){}
 
+        // Оператор в конце строки: "ls &\n" или "ls;\n"
         if(match(parser, TOKEN_EOF)){
             if(op->type == TOKEN_AMP){
+                // & в конце - запуск в фоне
                 ASTNode *result = ast_create_binary(AST_BACKGROUND, left, NULL);
                 if(!result){
                     ast_free(left);
@@ -106,15 +124,19 @@ static ASTNode *parse_command_line(Parser *parser){
             return left;
         }
 
+        // Парсим следующую команду после ; или &
         ASTNode *right = parse_and_or_list(parser);
         if(!right){
             ast_free(left);
             return NULL;
         }
 
+        // Строим AST в зависимости от оператора
         if(op->type == TOKEN_SEMI){
+            // ; - последовательное выполнение
             left = ast_create_binary(AST_SEQUENCE, left, right);
         } else {
+            // & - левая часть в фон, потом правая часть
             ASTNode *bg = ast_create_binary(AST_BACKGROUND, left, NULL);
             if(!bg){
                 ast_free(left);
@@ -133,7 +155,16 @@ static ASTNode *parse_command_line(Parser *parser){
     return left;
 }
 
+// Парсинг логических операторов: cmd1 && cmd2 || cmd3
 static ASTNode *parse_and_or_list(Parser *parser){
+    // Проверка: команда не должна начинаться с && или ||
+    const Token *tok = current_token(parser);
+    if(tok && (tok->type == TOKEN_AND || tok->type == TOKEN_OR)){
+        fprintf(stderr, "Parser error: unexpected '%s' at beginning\n",
+                tok->type == TOKEN_AND ? "&&" : "||");
+        return NULL;
+    }
+    
     ASTNode *left = parse_pipeline(parser);
     if(!left) return NULL;
 
@@ -152,6 +183,8 @@ static ASTNode *parse_and_or_list(Parser *parser){
             return NULL;
         }
         
+        // && - выполнить правую часть если левая успешна
+        // || - выполнить правую часть если левая неуспешна
         if(op_type == TOKEN_AND){
             left = ast_create_binary(AST_AND, left, right);
         } else {
@@ -167,7 +200,16 @@ static ASTNode *parse_and_or_list(Parser *parser){
     return left;
 }
 
+// Парсинг pipeline: cmd1 | cmd2 |& cmd3
 static ASTNode *parse_pipeline(Parser *parser){
+    // Проверка: команда не должна начинаться с | или |&
+    const Token *tok = current_token(parser);
+    if(tok && (tok->type == TOKEN_PIPE || tok->type == TOKEN_PIPE_ERR)){
+        fprintf(stderr, "Parser error: unexpected '%s' at beginning\n",
+                tok->type == TOKEN_PIPE ? "|" : "|&");
+        return NULL;
+    }
+    
     ASTNode *left = parse_primary(parser);
     if(!left) return NULL;
 
@@ -186,6 +228,7 @@ static ASTNode *parse_pipeline(Parser *parser){
             return NULL;
         }
 
+        // | - только stdout, |& - stdout и stderr
         if(op_type == TOKEN_PIPE){
             left = ast_create_binary(AST_PIPELINE, left, right);
         } else {
@@ -201,6 +244,8 @@ static ASTNode *parse_pipeline(Parser *parser){
     return left;
 }
 
+// Парсинг простой команды (слова до оператора или редиректа)
+// Собирает аргументы в массив для execvp
 static ASTNode *parse_simple_command(Parser *parser){
     size_t capacity = 8;
     size_t count = 0;
@@ -227,10 +272,12 @@ static ASTNode *parse_simple_command(Parser *parser){
             return NULL;
         }
         
+        // Не слово - конец команды (оператор, редирект, EOF)
         if(tok->type != TOKEN_WORD){
             break;
         }
 
+        // Динамический массив с удвоением capacity
         if(count >= capacity){
             capacity *= 2;
             char **new_args = realloc(args, capacity * sizeof(char *));
@@ -263,6 +310,7 @@ static ASTNode *parse_simple_command(Parser *parser){
         return NULL;
     }
 
+    // Место для NULL-терминатора (требуется для execvp)
     if(count >= capacity){
         capacity++;
         char **new_args = realloc(args, capacity * sizeof(char *));
@@ -276,7 +324,7 @@ static ASTNode *parse_simple_command(Parser *parser){
         }
         args = new_args;
     }
-    args[count] = NULL;
+    args[count] = NULL;  // execvp требует NULL в конце
 
     ASTNode *node = ast_create_command(args, count);
     if(!node){
@@ -291,6 +339,7 @@ static ASTNode *parse_simple_command(Parser *parser){
     return node;
 }
 
+// Парсинг перенаправлений после команды: cmd > file >> log < input
 static ASTNode *parse_redirects(Parser *parser, ASTNode *command){
     if(!command) return NULL;
     
@@ -317,11 +366,12 @@ static ASTNode *parse_redirects(Parser *parser, ASTNode *command){
                 redir_type = REDIR_ERR_APPEND;
                 break;
             default:
-                return command;
+                return command;  // Не редирект - возвращаем команду как есть
         }
         
         advance(parser);
         
+        // После редиректа должно быть имя файла
         const Token *file_tok = current_token(parser);
         if(!file_tok || file_tok->type != TOKEN_WORD){
             fprintf(stderr, "Parser error: expected filename after redirect at position %zu\n",
@@ -339,6 +389,7 @@ static ASTNode *parse_redirects(Parser *parser, ASTNode *command){
         
         advance(parser);
         
+        // Оборачиваем команду в узел редиректа
         command = ast_create_redirect(command, redir_type, filename);
         if(!command){
             return NULL;
@@ -348,8 +399,11 @@ static ASTNode *parse_redirects(Parser *parser, ASTNode *command){
     return command;
 }
 
+// Парсинг первичного выражения: простая команда или (subshell)
 static ASTNode *parse_primary(Parser* parser){
+    // Subshell: (команды внутри скобок)
     if(match(parser, TOKEN_LPAREN)){
+        // Рекурсивно парсим всё что внутри скобок
         ASTNode *inner = parse_command_line(parser);
         if(!inner){
             fprintf(stderr, "Parser error: expected command after '('\n");
@@ -372,6 +426,7 @@ static ASTNode *parse_primary(Parser* parser){
         return subshell;
     }
     
+    // Обычная команда с возможными редиректами
     ASTNode *command = parse_simple_command(parser);
     return parse_redirects(parser, command);
 }

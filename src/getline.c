@@ -374,7 +374,7 @@ char* my_getline(void) {
     return buf;
 }
 
-// Проверка незакрытых конструкций (кавычки, ${...}, \)
+// Проверка незакрытых конструкций (кавычки, ${...}, \, операторы)
 int has_unclosed_syntax(const char *str) {
     int single = 0;
     int double_q = 0;
@@ -405,7 +405,30 @@ int has_unclosed_syntax(const char *str) {
         backslash_continue = 1;
     }
     
-    return single || double_q || brace || backslash_continue;
+    // Проверка на незавершенные операторы в конце строки
+    // Ищем последний непробельный символ перед \n
+    int trailing_operator = 0;
+    if (len > 1) {
+        size_t i = len - 1;
+        // Пропускаем \n в конце
+        if (str[i] == '\n') {
+            i--;
+        }
+        // Пропускаем пробелы
+        while (i > 0 && (str[i] == ' ' || str[i] == '\t')) {
+            i--;
+        }
+        
+        // Проверяем операторы: |, &&, ||
+        if (str[i] == '|') {
+            trailing_operator = 1;
+        }
+        else if (i > 0 && str[i] == '&' && str[i-1] == '&') {
+            trailing_operator = 1;
+        }
+    }
+    
+    return single || double_q || brace || backslash_continue || trailing_operator;
 }
 
 char* str_concat(char *s1, const char *s2) {

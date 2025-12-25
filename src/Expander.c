@@ -28,7 +28,7 @@ static int buffer_append(char **buf, size_t *len, size_t *cap, const char *str);
 int expander_expand(TokenArray *tokens){
     for(size_t i = 0; i < tokens->count; i++){
         // Раскрываем только обычные слова (не операторы, не редиректы)
-        if(tokens->tokens[i].type == TOKEN_WORD){
+        if(tokens->tokens[i].type == TOKEN_WORD && tokens->tokens[i].quote != QUOTE_SINGLE){
             char *expanded = expand_string(tokens->tokens[i].text);
             if(expanded){
                 free(tokens->tokens[i].text);

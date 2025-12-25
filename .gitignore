@@ -56,6 +56,12 @@ dkms.conf
 
 # test
 test_*.c
+input.txt
+output.txt
+Tests.md
+test.txt
+append.txt
+out.txt
 
 # main
 main
@@ -63,6 +69,3 @@ main
 # VSCode
 c_cpp_properties.json
 settings.json
-
-#line-editing
-line-editing.c

@@ -17,6 +17,8 @@
 
 int g_last_exit_code = 0;
 pid_t g_last_bg_pid = 0;
+int g_should_exit = 0;      // Флаг для выхода из shell
+int g_exit_code = 0;        // Код выхода при exit
 static int g_exit_attempt = 0;
 
 int main(){
@@ -99,8 +101,15 @@ int main(){
         token_array_free(&tokens);
         lexer_destroy(&lexer);
         free(line);
+        
+        // Проверяем флаг выхода (установлен командой exit)
+        if(g_should_exit){
+            break;
+        }
     }
 
     history_save();
-    return 0;
+    history_free();
+    job_control_cleanup();
+    return g_exit_code;
 }

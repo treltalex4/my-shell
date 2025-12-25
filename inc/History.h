@@ -20,4 +20,5 @@ const char *history_get(int index);
 const char *history_get_last(void);
 int history_count(void);
 void history_clear(void);
+void history_free(void);
 int history_count(void);

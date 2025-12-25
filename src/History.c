@@ -123,3 +123,12 @@ void history_clear(void) {
     }
     g_history.count = 0;
 }
+
+// Полное освобождение памяти истории
+// Вызывается при завершении shell
+void history_free(void) {
+    history_clear();
+    free(g_history.lines);
+    g_history.lines = NULL;
+    g_history.capacity = 0;
+}
